@@ -2,18 +2,17 @@ package org.example;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.time.LocalTime;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects;
 
 public class SelfDetector {
     private HashMap<InetAddress, Long> copies = new HashMap<>();
     private static InetAddress localNetAddress;
     private static final int TIME_OF_DEATH = 1000; //ms
     private Object mutex = new Object();
+    private int myPort;
 
-    SelfDetector(String localNetAddr, HashMap<InetAddress, Long> copies) {
+    SelfDetector(String localNetAddr, int port, HashMap<InetAddress, Long> copies) {
         try {
             localNetAddress = InetAddress.getByName(localNetAddr);
 
@@ -22,11 +21,12 @@ public class SelfDetector {
             throw new RuntimeException(e);
         }
         this.copies = copies;
+        myPort = port;
     }
 
     public void detect() {
-        MulticastReceiver multicastReceiver = new MulticastReceiver();
-        MulticastSender multicastSender = new MulticastSender();
+        MulticastReceiver multicastReceiver = new MulticastReceiver(localNetAddress, myPort);
+        MulticastSender multicastSender = new MulticastSender(localNetAddress, myPort);
 
         Thread senderThread = new Thread(() -> {
             multicastSender.startSending();
