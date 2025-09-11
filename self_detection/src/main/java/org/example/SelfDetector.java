@@ -6,13 +6,13 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class SelfDetector {
-    private HashMap<InetAddress, Long> copies = new HashMap<>();
+    private HashMap<String, Long> copies = new HashMap<>();
     private static InetAddress localNetAddress;
     private static final int TIME_OF_DEATH = 1000; //ms
     private Object mutex = new Object();
     private int myPort;
 
-    SelfDetector(String localNetAddr, int port, HashMap<InetAddress, Long> copies) {
+    SelfDetector(String localNetAddr, int port, HashMap<String, Long> copies) {
         try {
             localNetAddress = InetAddress.getByName(localNetAddr);
 
@@ -32,16 +32,23 @@ public class SelfDetector {
             multicastSender.startSending();
         });
         Thread receiverThread = new Thread(() -> {
-            multicastReceiver.startReceiving();
+            multicastReceiver.startReceiving(copies, mutex);
+        });
+        Thread checkerThread = new Thread(() -> {
+            checkingTheLiving();
         });
 
         senderThread.start();
         receiverThread.start();
+        checkerThread.start();
+    }
 
+    private void checkingTheLiving() {
         while (true) {
-            for (Map.Entry<InetAddress, Long> copy : copies.entrySet()) {
-                if (System.currentTimeMillis() - copy.getValue() > TIME_OF_DEATH) {
-                    synchronized (mutex) {
+            synchronized (mutex) {
+                for (Map.Entry<String, Long> copy : copies.entrySet()) {
+                    if (System.currentTimeMillis() - copy.getValue() > TIME_OF_DEATH) {
+
                         copies.remove(copy.getKey());
                     }
                 }
