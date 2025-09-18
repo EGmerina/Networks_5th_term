@@ -21,3 +21,5 @@ public class Main {
         userInterface.show(copies, mutex);
     }
 }
+
+// sudo java -jar target/self_detection-1.0-SNAPSHOT-jar-with-dependencies.jar  230.0.0.1 20
