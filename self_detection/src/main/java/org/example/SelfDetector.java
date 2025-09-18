@@ -13,19 +13,19 @@ public class SelfDetector {
     private HashMap<String, Long> copies = new HashMap<>();
     private static InetAddress localNetAddress;
     private static final int TIME_OF_DEATH = 1000; //ms
-    private Object mutex = new Object();
+    private Object mutex;
     private int myPort;
 
-    SelfDetector(String localNetAddr, int port, HashMap<String, Long> copies) {
+    SelfDetector(String localNetAddr, int port, HashMap<String, Long> copies, Object mutex) {
         try {
             localNetAddress = InetAddress.getByName(localNetAddr);
-
         } catch (UnknownHostException e) {
-            System.out.println("unknown ip address");
+            logger.error("unknown ip address");
             throw new RuntimeException(e);
         }
         this.copies = copies;
         myPort = port;
+        this.mutex = mutex;
     }
 
     public void detect() {

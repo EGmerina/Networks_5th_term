@@ -19,11 +19,10 @@ public class MulticastSender {
     public MulticastSender(InetAddress localNetAddress, int myPort) {
         try {
             socket = new DatagramSocket();
-            //socket.setTimeToLive(1);
             this.localNetAddress = localNetAddress;
             this.myPort = myPort;
         } catch (IOException e) {
-            System.out.println("can't open socket in receiver");
+            logger.error("can't open socket in receiver");
             throw new RuntimeException(e);
         }
     }
@@ -35,7 +34,7 @@ public class MulticastSender {
                 byte[] buffer = healthCheck.getBytes("UTF-8");
                 DatagramPacket packet = new DatagramPacket(buffer, buffer.length, localNetAddress, myPort);
                 socket.send(packet);
-                logger.trace("message was sent");
+                logger.trace("health-check  was sent");
                 Thread.sleep(500);
             } catch (UnsupportedEncodingException e) {
                 throw new RuntimeException(e);

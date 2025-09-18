@@ -9,7 +9,7 @@
 
     <Loggers>
         <!-- Корневой логгер -->
-        <Root level="trace">
+        <Root level="info">
             <AppenderRef ref="Console"/>
         </Root>
     </Loggers>

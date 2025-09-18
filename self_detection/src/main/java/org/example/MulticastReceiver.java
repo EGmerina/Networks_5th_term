@@ -18,25 +18,23 @@ public class MulticastReceiver {
             socket.joinGroup(localNetAddress);
             logger.trace("inet socket address :" + localNetAddress + " " + myPort + " joined the group ");
         } catch (IOException e) {
-            System.out.println("can't open socket in receiver");
+            logger.error("can't open socket in receiver");
             throw new RuntimeException(e);
         }
     }
 
     public void startReceiving(HashMap<String, Long> copies, Object mutex) {
-        logger.trace("start receiving");
         byte[] buffer = new byte[BUFFER_SIZE];
         DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
         while (true) {
-            logger.trace("in cycle");
             try {
                 socket.receive(packet);
                 String message = new String(packet.getData(), 0, packet.getLength(), "UTF-8");
                 logger.trace("receive message " + message);
                 if (message.equals("I'm alive!")) {
-                    logger.trace("'im alive' was received");
                     InetAddress sourceAddress = packet.getAddress();
                     int sourcePort = packet.getPort();
+                    logger.trace(sourceAddress.toString() + ":" + sourcePort + " is alive");
                     String keyOfCopy = new String(sourceAddress.toString() + ":" + sourcePort);
                     synchronized (mutex) {
                         copies.put(keyOfCopy, System.currentTimeMillis());
@@ -44,8 +42,7 @@ public class MulticastReceiver {
                 }
                 packet.setLength(buffer.length);
             } catch (IOException e) {
-                System.out.println("problem in receiving");
-                //throw new RuntimeException(e);
+                logger.warn("problem in receiving");
             }
         }
 
