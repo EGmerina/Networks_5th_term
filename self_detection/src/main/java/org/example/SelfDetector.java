@@ -1,11 +1,15 @@
 package org.example;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.HashMap;
 import java.util.Map;
 
 public class SelfDetector {
+    private static final Logger logger = LogManager.getLogger(SelfDetector.class);
     private HashMap<String, Long> copies = new HashMap<>();
     private static InetAddress localNetAddress;
     private static final int TIME_OF_DEATH = 1000; //ms
@@ -25,6 +29,7 @@ public class SelfDetector {
     }
 
     public void detect() {
+        logger.trace("start detecting");
         MulticastReceiver multicastReceiver = new MulticastReceiver(localNetAddress, myPort);
         MulticastSender multicastSender = new MulticastSender(localNetAddress, myPort);
 
