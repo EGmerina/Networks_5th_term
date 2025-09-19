@@ -6,6 +6,7 @@ import org.apache.logging.log4j.Logger;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 
 public class SelfDetector {
@@ -13,7 +14,7 @@ public class SelfDetector {
     private HashMap<String, Long> copies = new HashMap<>();
     private static InetAddress localNetAddress;
     private static final int TIME_OF_DEATH = 1000; //ms
-    private Object mutex;
+    private final Object mutex;
     private int myPort;
 
     SelfDetector(String localNetAddr, int port, HashMap<String, Long> copies, Object mutex) {
@@ -51,13 +52,15 @@ public class SelfDetector {
     private void checkingTheLiving() {
         while (true) {
             synchronized (mutex) {
-                for (Map.Entry<String, Long> copy : copies.entrySet()) {
+                Iterator<Map.Entry<String, Long>> iterator = copies.entrySet().iterator();
+                while (iterator.hasNext()) {
+                    Map.Entry<String, Long> copy = iterator.next();
                     if (System.currentTimeMillis() - copy.getValue() > TIME_OF_DEATH) {
-
-                        copies.remove(copy.getKey());
+                        iterator.remove();
                     }
                 }
             }
+
         }
     }
 }

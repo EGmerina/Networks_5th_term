@@ -1,8 +1,7 @@
 package org.example;
 
 import java.util.HashMap;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+
 
 public class Main {
     private static HashMap<String, Long> copies = new HashMap<>();
@@ -23,3 +22,4 @@ public class Main {
 }
 
 // sudo java -jar target/self_detection-1.0-SNAPSHOT-jar-with-dependencies.jar  230.0.0.1 20
+// sudo java -jar target/self_detection-1.0-SNAPSHOT-jar-with-dependencies.jar  ff02::abcd 20

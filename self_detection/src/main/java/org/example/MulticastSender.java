@@ -10,7 +10,6 @@ import java.net.*;
 public class MulticastSender {
     private static final Logger logger = LogManager.getLogger(MulticastSender.class);
     private DatagramSocket socket;
-    private final static int BUFFER_SIZE = 100;
     private final static String healthCheck = "I'm alive!";
     private InetAddress localNetAddress;
     private int myPort;
