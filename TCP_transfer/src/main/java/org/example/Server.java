@@ -11,6 +11,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Iterator;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -18,6 +21,7 @@ import org.apache.logging.log4j.Logger;
 
 public class Server {
     private Logger logger = LogManager.getLogger(Server.class);
+    private final ExecutorService threadPool = Executors.newFixedThreadPool(10);
 
     public void start(int port) {
         logger.info("server starts");
@@ -64,7 +68,12 @@ public class Server {
 
                 }
                 if (key.isReadable()) {
-                    handleRead();
+                    threadPool.execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            handleRead();
+                        }
+                    });
                 }
                 iterator.remove();
             }
