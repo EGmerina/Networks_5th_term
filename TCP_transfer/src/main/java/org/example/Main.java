@@ -16,7 +16,8 @@ public class Main {
             Client client = new Client();
             client.start(path, inetSocketAddress);
         } else {
-            System.out.println("Usage: \n for Server : <port number>\n for Client : <file path> <server address> <server port>");
+            System.out.println("Usage: \n for Server : <port number>\n " +
+                    "for Client : <file path> <server address> <server port>");
         }
     }
 }
