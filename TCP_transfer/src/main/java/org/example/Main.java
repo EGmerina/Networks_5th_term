@@ -21,3 +21,7 @@ public class Main {
         }
     }
 }
+
+
+//java -jar target/TCP_transfer-1.0-SNAPSHOT-jar-with-dependencies.jar 8888
+// java -jar target/TCP_transfer-1.0-SNAPSHOT-jar-with-dependencies.jar pom.xml 127.0.0.1 8888

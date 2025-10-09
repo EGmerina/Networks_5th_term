@@ -1,6 +1,7 @@
 package org.example;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -14,7 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 // Формат сообщения:
-// [4 байта - длина JSON] [JSON заголовок] [данные файла]
+// [4 байта - длина JSON] [JSON заголовок] [получить ответ сервера "OK"] [данные файла]
 
 public class Client {
     private Logger logger = LogManager.getLogger(Client.class);
@@ -36,12 +37,32 @@ public class Client {
         try {
             FileMetaData fileMetaData = new FileMetaData(path.getFileName().toString(), Files.size(path));
             sendMetaData(socketChannel, fileMetaData);
+            String response = getServerResponse(socketChannel);
+            logger.info("server response is {}", response);
+            if (!response.equals("OK")) {
+                socketChannel.close();
+                return;
+            }
             sendFileData(socketChannel, path);
+            response = getServerResponse(socketChannel);
+            System.out.println("sending completed : " + response);
+            socketChannel.close();
         } catch (IOException e) {
             logger.error("can't know file size");
             throw new RuntimeException(e);
         }
+        logger.info("client finished");
+    }
 
+    private String getServerResponse(SocketChannel socketChannel) {
+        ByteBuffer buffer = ByteBuffer.allocate(1);
+        try {
+            socketChannel.read(buffer);
+        } catch (IOException e) {
+            logger.error("can't read server response");
+            throw new RuntimeException(e);
+        }
+        return new String(buffer.array(), StandardCharsets.UTF_8);
     }
 
     private void sendFileData(SocketChannel socketChannel, Path path) {
@@ -67,7 +88,7 @@ public class Client {
         logger.trace("start send meta data");
         String jsonHeader = null;
         try {
-            jsonHeader = fileMetaData.getMetaDataInJsonFormat();
+            jsonHeader = getDataInJsonFormat(fileMetaData);
         } catch (JsonProcessingException e) {
             logger.error("can't convert fileMetaData to json format");
             throw new RuntimeException(e);
@@ -84,7 +105,13 @@ public class Client {
             logger.error("can't write header");
             throw new RuntimeException(e);
         }
-        logger.trace("mata data was sent");
+        logger.trace("meta data was sent");
+    }
+
+    private String getDataInJsonFormat(FileMetaData fileMetaData) throws JsonProcessingException {
+        ObjectMapper mapper = new ObjectMapper();
+        return mapper.writeValueAsString(fileMetaData);
+
     }
 
 }

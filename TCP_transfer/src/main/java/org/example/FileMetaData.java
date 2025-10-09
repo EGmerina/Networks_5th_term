@@ -12,9 +12,14 @@ public class FileMetaData {
         this.fileSize = fileSize;
     }
 
-    public String getMetaDataInJsonFormat() throws JsonProcessingException {
-        ObjectMapper mapper = new ObjectMapper();
-        return mapper.writeValueAsString(this);
+    public FileMetaData() {
+    }
 
+    public String getFileName() {
+        return fileName;
+    }
+
+    public long getFileSize() {
+        return fileSize;
     }
 }
