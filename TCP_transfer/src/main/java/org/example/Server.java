@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.Iterator;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -22,6 +23,7 @@ public class Server {
     private static final ObjectMapper mapper = new ObjectMapper();
     private Logger logger = LogManager.getLogger(Server.class);
     private final ExecutorService threadPool = Executors.newFixedThreadPool(10);
+    private static final int BUFFER_SIZE = 8192;
 
     public void start(int port) {
         logger.info("server starts");
@@ -117,12 +119,13 @@ public class Server {
             readFully(channel, jsonHeaderBuffer);
             String jsonHeader = new String(jsonHeaderBuffer.array(), StandardCharsets.UTF_8);
             FileMetaData fileMetaData = mapper.readValue(jsonHeader, FileMetaData.class);
-            if (fileMetaData.getFileName().length() > 4096 || fileMetaData.getFileSize() > 1024 * 1024 * 1024 * 1024) {   // Длина имени файла не превышает 4096 байт в кодировке UTF-8. Размер файла не более 1 терабайта.
+            if (fileMetaData.getFileName().length() > 4096 || fileMetaData.getFileSize() > (1024L * 1024 * 1024 * 1024)) {   // Длина имени файла не превышает 4096 байт в кодировке UTF-8. Размер файла не более 1 терабайта.
                 sendResponseToClient("NO", channel);
+                logger.trace("file name length {} ,  file size {}", fileMetaData.getFileName().length(), fileMetaData.getFileSize());
                 throw new IOException("file too large or file name too long");
             }
             sendResponseToClient("OK", channel);
-            сreateFile(fileMetaData.getFileName());
+            //сreateFile(fileMetaData.getFileName());
             try {
                 receiveFileData(channel, fileMetaData);
             } catch (IOException e) {
@@ -140,13 +143,30 @@ public class Server {
 
     private void receiveFileData(SocketChannel channel, FileMetaData fileMetaData) throws IOException {
         long recBytesNum = 0;
-        ByteBuffer recBuffer = ByteBuffer.allocate(8192);
-        while (recBytesNum != fileMetaData.getFileSize()) {
+        //TODO тут надо правильно выбрать размер буфера и не читать лишнее
+        ByteBuffer recBuffer = ByteBuffer.allocate(BUFFER_SIZE);
+        Path filePath = Paths.get("uploads", fileMetaData.getFileName());
 
-            recBytesNum += readFully(channel, recBuffer);
+        try (FileChannel fileChannel = FileChannel.open(filePath,
+                StandardOpenOption.WRITE, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
 
-            if (recBytesNum > fileMetaData.getFileSize()) {
-                throw new IOException("client sent more data than was going to");
+            while (recBytesNum != fileMetaData.getFileSize()) {
+                recBuffer.clear();
+                logger.trace("try to get data...");
+
+                int remaining = (int) Math.min(recBuffer.capacity(), fileMetaData.getFileSize() - recBytesNum);
+                recBuffer.limit(remaining);
+
+                recBytesNum += readFully(channel, recBuffer);
+                logger.trace("totally get {} bytes", recBytesNum);
+
+                while (recBuffer.hasRemaining()) {
+                    fileChannel.write(recBuffer);
+                }
+
+                if (recBytesNum > fileMetaData.getFileSize()) {
+                    throw new IOException("client sent more data than was going to");
+                }
             }
         }
     }
@@ -179,11 +199,16 @@ public class Server {
     private long readFully(SocketChannel socketChannel, ByteBuffer buffer) {
         long recNum = 0;
         while (buffer.hasRemaining()) {
+            logger.trace("reading data...received {} bytes", recNum);
             try {
                 recNum += socketChannel.read(buffer);
             } catch (IOException e) {
                 logger.error("can't read from channel");
                 throw new RuntimeException(e);
+            }
+            if (recNum == -1) {
+                logger.warn("client closed connection unexpectedly");
+                throw new RuntimeException("Client closed connection before sending full data");
             }
         }
         buffer.flip();

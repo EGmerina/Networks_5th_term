@@ -19,6 +19,7 @@ import java.nio.file.Path;
 
 public class Client {
     private Logger logger = LogManager.getLogger(Client.class);
+    private static final int BUFFER_SIZE = 8192;
 
     public void start(Path path, InetSocketAddress inetSocketAddress) {
         logger.info("client starts");
@@ -38,8 +39,8 @@ public class Client {
             FileMetaData fileMetaData = new FileMetaData(path.getFileName().toString(), Files.size(path));
             sendMetaData(socketChannel, fileMetaData);
             String response = getServerResponse(socketChannel);
-            logger.info("server response is {}", response);
             if (!response.equals("OK")) {
+                logger.error("server response is not OK, it is {}", response);
                 socketChannel.close();
                 return;
             }
@@ -62,13 +63,14 @@ public class Client {
             logger.error("can't read server response");
             throw new RuntimeException(e);
         }
-        return new String(buffer.array(), StandardCharsets.UTF_8);
+        buffer.flip();
+        return new String(buffer.array(), StandardCharsets.UTF_8).trim();
     }
 
     private void sendFileData(SocketChannel socketChannel, Path path) {
         logger.trace("start send file data");
         try (FileChannel fileChannel = FileChannel.open(path)) {
-            ByteBuffer fileBuffer = ByteBuffer.allocate(8192);
+            ByteBuffer fileBuffer = ByteBuffer.allocate(BUFFER_SIZE);
             while (fileChannel.read(fileBuffer) != -1) {
                 fileBuffer.flip();
                 while (fileBuffer.hasRemaining()) {
