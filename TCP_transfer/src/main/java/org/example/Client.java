@@ -55,7 +55,7 @@ public class Client {
     }
 
     private String getServerResponse(SocketChannel socketChannel) {
-        ByteBuffer buffer = ByteBuffer.allocate(1);
+        ByteBuffer buffer = ByteBuffer.allocate(4);
         try {
             socketChannel.read(buffer);
         } catch (IOException e) {

@@ -69,22 +69,19 @@ public class Server {
                 }
                 if (key.isReadable()) {
                     SocketChannel socketChannel = (SocketChannel) key.channel();
-                    threadPool.execute(new Runnable() {
-                        @Override
-                        public void run() {
+                    key.cancel();
+                    threadPool.execute(() -> {
+                        try {
+                            handleRead(socketChannel);
+                        } catch (IOException e) {
+                            logger.error("Error while handling client {}", socketChannel, e);
+                        } finally {
                             try {
-                                handleRead(socketChannel);
-                            } catch (IOException e) {
-                            } finally {
-                                try {
-                                    logger.info("closing client {} ", socketChannel.getRemoteAddress());
-                                    socketChannel.close();
-                                } catch (IOException ex) {
-                                    logger.error("can't close socket channel");
-                                    throw new RuntimeException(ex);
-                                }
-                                key.cancel();
-
+                                logger.info("closing client {} ", socketChannel.getRemoteAddress());
+                                // отменяем ключ
+                                socketChannel.close(); // закрываем канал
+                            } catch (IOException ex) {
+                                logger.error("can't close socket channel", ex);
                             }
                         }
                     });
@@ -112,10 +109,12 @@ public class Server {
     private void handleRead(SocketChannel channel) throws IOException {
         try {
             ByteBuffer headerSizeBuffer = ByteBuffer.allocate(4);
-            channel.read(headerSizeBuffer);
+            readFully(channel, headerSizeBuffer);
+            // channel.read(headerSizeBuffer);
             int jsonHeaderSize = headerSizeBuffer.getInt();
             ByteBuffer jsonHeaderBuffer = ByteBuffer.allocate(jsonHeaderSize);
-            channel.read(jsonHeaderBuffer);
+            // channel.read(jsonHeaderBuffer);
+            readFully(channel, jsonHeaderBuffer);
             String jsonHeader = new String(jsonHeaderBuffer.array(), StandardCharsets.UTF_8);
             FileMetaData fileMetaData = mapper.readValue(jsonHeader, FileMetaData.class);
             if (fileMetaData.getFileName().length() > 4096 || fileMetaData.getFileSize() > 1024 * 1024 * 1024 * 1024) {   // Длина имени файла не превышает 4096 байт в кодировке UTF-8. Размер файла не более 1 терабайта.
@@ -143,12 +142,9 @@ public class Server {
         long recBytesNum = 0;
         ByteBuffer recBuffer = ByteBuffer.allocate(8192);
         while (recBytesNum != fileMetaData.getFileSize()) {
-            try {
-                recBytesNum += channel.read(recBuffer);
-            } catch (IOException e) {
-                logger.error("error with reading file data");
-                throw new RuntimeException(e);
-            }
+
+            recBytesNum += readFully(channel, recBuffer);
+
             if (recBytesNum > fileMetaData.getFileSize()) {
                 throw new IOException("client sent more data than was going to");
             }
@@ -178,6 +174,20 @@ public class Server {
             logger.error("error when send response to client");
             throw new RuntimeException(ex);
         }
+    }
+
+    private long readFully(SocketChannel socketChannel, ByteBuffer buffer) {
+        long recNum = 0;
+        while (buffer.hasRemaining()) {
+            try {
+                recNum += socketChannel.read(buffer);
+            } catch (IOException e) {
+                logger.error("can't read from channel");
+                throw new RuntimeException(e);
+            }
+        }
+        buffer.flip();
+        return recNum;
     }
 }
 
