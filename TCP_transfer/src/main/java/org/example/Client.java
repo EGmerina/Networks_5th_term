@@ -47,13 +47,33 @@ public class Client {
             }
             sendFileData(socketChannel, path);
             response = getServerResponse(socketChannel);
-            System.out.println("sending completed : " + response);
+            showServerResponse(response);
             socketChannel.close();
         } catch (IOException e) {
             logger.error("can't know file size");
             throw new RuntimeException(e);
         }
         logger.info("client finished");
+    }
+
+    private void showServerResponse(String response) {
+        switch (response) {
+            case "SUC" -> {
+                System.out.println("==================================");
+                System.out.println("🎉 sending data was successful!");
+                System.out.println("==================================");
+            }
+            case "FAIL" -> {
+                System.out.println("==================================");
+                System.out.println("😭 sending data was failed!");
+                System.out.println("==================================");
+            }
+            case null, default -> {
+                System.out.println("==================================");
+                System.out.println("🤯 unknown server response");
+                System.out.println("==================================");
+            }
+        }
     }
 
     private String getServerResponse(SocketChannel socketChannel) {
