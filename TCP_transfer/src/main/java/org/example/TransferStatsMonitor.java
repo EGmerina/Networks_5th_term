@@ -23,8 +23,8 @@ public class TransferStatsMonitor {
                         Map.Entry<String, TransferStats> entry = iterator.next();
                         System.out.println("======================================");
                         System.out.println("client with address : " + entry.getKey());
-                        System.out.println("⏲ instantaneous speed : " + entry.getValue().getInstantaneousSpeed() + " bytes/sec ");
-                        System.out.println("⏲ average speed : " + entry.getValue().getAverageSpeed() + " bytes/sec ");
+                        System.out.println("⏲ instantaneous speed : " + entry.getValue().getInstantaneousSpeed() / (1024 * 1024L) + " Mbytes/sec ");
+                        System.out.println("⏲ average speed : " + entry.getValue().getAverageSpeed() / (1024 * 1024L) + " Mbytes/sec ");
                         System.out.println("======================================");
                         if (entry.getValue().getFlagToDelete()) {
                             iterator.remove();

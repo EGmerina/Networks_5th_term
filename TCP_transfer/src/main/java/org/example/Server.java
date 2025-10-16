@@ -160,8 +160,9 @@ public class Server {
                 int remaining = (int) Math.min(recBuffer.capacity(), fileMetaData.getFileSize() - recBytesNum);
                 recBuffer.limit(remaining);
 
-                recBytesNum += readFully(channel, recBuffer);
-                monitor.updateReceivedBytes(channel.getRemoteAddress().toString(), recBytesNum);
+                long delta = readFully(channel, recBuffer);
+                monitor.updateReceivedBytes(channel.getRemoteAddress().toString(), delta);
+                recBytesNum += delta;
 
                 logger.trace("totally get {} bytes", recBytesNum);
 

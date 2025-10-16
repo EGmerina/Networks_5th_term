@@ -50,8 +50,9 @@ public class Client {
             showServerResponse(response);
             socketChannel.close();
         } catch (IOException e) {
-            logger.error("can't know file size");
-            throw new RuntimeException(e);
+            logger.error("can't know file size or connection to the server was lost");
+            System.out.println("connection to the server was lost");
+            return;
         }
         logger.info("client finished");
     }
@@ -88,7 +89,7 @@ public class Client {
         return new String(buffer.array(), StandardCharsets.UTF_8).trim();
     }
 
-    private void sendFileData(SocketChannel socketChannel, Path path) {
+    private void sendFileData(SocketChannel socketChannel, Path path) throws IOException {
         logger.trace("start send file data");
         try (FileChannel fileChannel = FileChannel.open(path)) {
             ByteBuffer fileBuffer = ByteBuffer.allocate(BUFFER_SIZE);
@@ -102,7 +103,7 @@ public class Client {
             }
         } catch (IOException e) {
             logger.error("error with send data");
-            throw new RuntimeException(e);
+            throw new IOException("connection to the server was lost");
         }
         logger.trace("file data was sent");
     }
