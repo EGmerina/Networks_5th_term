@@ -181,11 +181,10 @@ public class Server {
             socketChannel.write(buffer);
         } catch (IOException ex) {
             logger.error("error when send response to client");
-            throw new RuntimeException(ex);
         }
     }
 
-    private long readFully(SocketChannel socketChannel, ByteBuffer buffer) {
+    private long readFully(SocketChannel socketChannel, ByteBuffer buffer) throws IOException {
         long recNum = 0;
         while (buffer.hasRemaining()) {
             logger.trace("reading data...received {} bytes", recNum);
@@ -193,15 +192,16 @@ public class Server {
                 recNum += socketChannel.read(buffer);
             } catch (IOException e) {
                 logger.error("can't read from channel");
-                throw new RuntimeException(e);
+                throw new IOException(e);
             }
             if (recNum == -1) {
                 logger.warn("client closed connection unexpectedly");
-                throw new RuntimeException("Client closed connection before sending full data");
+                throw new IOException("Client closed connection before sending full data");
             }
         }
         buffer.flip();
         return recNum;
     }
 }
+
 
