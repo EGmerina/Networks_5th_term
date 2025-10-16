@@ -125,7 +125,6 @@ public class Server {
                 throw new IOException("file too large or file name too long");
             }
             sendResponseToClient("OK", channel);
-            //сreateFile(fileMetaData.getFileName());
             try {
                 receiveFileData(channel, fileMetaData);
             } catch (IOException e) {
@@ -133,7 +132,7 @@ public class Server {
                 logger.error(e);
             }
             sendResponseToClient("SUC", channel);
-            logger.trace("downloading file was successful");
+            logger.info("downloading file was successful");
 
         } catch (IOException e) {
             logger.error("can't read json header");
@@ -168,21 +167,6 @@ public class Server {
                     throw new IOException("client sent more data than was going to");
                 }
             }
-        }
-    }
-
-    private void сreateFile(String fileName) {
-        Path pathToFile = Paths.get("uploads/" + fileName);
-        if (!Files.exists(pathToFile)) {
-            try {
-                Files.createFile(pathToFile);
-            } catch (IOException e) {
-                logger.trace("can't create file " + fileName);
-                throw new RuntimeException(e);
-            }
-            logger.trace("file " + fileName + " was created");
-        } else {
-            logger.trace("file " + fileName + " exists");
         }
     }
 

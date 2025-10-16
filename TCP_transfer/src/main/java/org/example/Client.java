@@ -28,7 +28,8 @@ public class Client {
             socketChannel = SocketChannel.open();
             socketChannel.connect(inetSocketAddress);
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            System.out.println("server isn't working now, try to connect later");
+            return;
         }
         logger.info("connected to server");
         if (!Files.exists(path) || !Files.isRegularFile(path)) {
@@ -74,8 +75,8 @@ public class Client {
             while (fileChannel.read(fileBuffer) != -1) {
                 fileBuffer.flip();
                 while (fileBuffer.hasRemaining()) {
-                    socketChannel.write(fileBuffer);
-                    fileBuffer.compact();
+                    int writtenNum = socketChannel.write(fileBuffer);
+                    logger.trace("was written {} bytes", writtenNum);
                 }
                 fileBuffer.clear();
             }
