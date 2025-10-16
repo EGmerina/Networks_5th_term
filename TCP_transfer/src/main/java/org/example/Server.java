@@ -18,15 +18,20 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-
+//TODO add velocity , period 3 sec
 public class Server {
     private static final ObjectMapper mapper = new ObjectMapper();
-    private Logger logger = LogManager.getLogger(Server.class);
-    private final ExecutorService threadPool = Executors.newFixedThreadPool(10);
+    private final TransferStatsMonitor monitor = new TransferStatsMonitor();
+    private final Logger logger = LogManager.getLogger(Server.class);
+    private static final int MAX_THREAD_NUM = 10;
+    private final ExecutorService threadPool = Executors.newFixedThreadPool(MAX_THREAD_NUM);
     private static final int BUFFER_SIZE = 8192;
+    private static final int MAX_FILE_NAME_LENGTH = 4096;
+    private static final long MAX_FILE_SIZE = 1024L * 1024 * 1024 * 1024; //1 tb
 
     public void start(int port) {
         logger.info("server starts");
+        monitor.start();
         createUploadsDirectory();
         ServerSocketChannel serverSocketChannel = null;
         Selector selector = null;
@@ -62,6 +67,7 @@ public class Server {
                         SocketChannel client = server.accept();
                         client.configureBlocking(false);
                         client.register(selector, SelectionKey.OP_READ);
+                        monitor.registerClient(client.getRemoteAddress());
                         logger.info("client {} was accepted", client.getRemoteAddress());
                     } catch (IOException e) {
                         logger.error("can't accept socketChannel");
@@ -80,7 +86,7 @@ public class Server {
                         } finally {
                             try {
                                 logger.info("closing client {} ", socketChannel.getRemoteAddress());
-                                // отменяем ключ
+                                monitor.deleteClient(socketChannel.getRemoteAddress().toString());
                                 socketChannel.close(); // закрываем канал
                             } catch (IOException ex) {
                                 logger.error("can't close socket channel", ex);
@@ -112,14 +118,12 @@ public class Server {
         try {
             ByteBuffer headerSizeBuffer = ByteBuffer.allocate(4);
             readFully(channel, headerSizeBuffer);
-            // channel.read(headerSizeBuffer);
             int jsonHeaderSize = headerSizeBuffer.getInt();
             ByteBuffer jsonHeaderBuffer = ByteBuffer.allocate(jsonHeaderSize);
-            // channel.read(jsonHeaderBuffer);
             readFully(channel, jsonHeaderBuffer);
             String jsonHeader = new String(jsonHeaderBuffer.array(), StandardCharsets.UTF_8);
             FileMetaData fileMetaData = mapper.readValue(jsonHeader, FileMetaData.class);
-            if (fileMetaData.getFileName().length() > 4096 || fileMetaData.getFileSize() > (1024L * 1024 * 1024 * 1024)) {   // Длина имени файла не превышает 4096 байт в кодировке UTF-8. Размер файла не более 1 терабайта.
+            if (fileMetaData.getFileName().length() > MAX_FILE_NAME_LENGTH || fileMetaData.getFileSize() > MAX_FILE_SIZE) {   // Длина имени файла не превышает 4096 байт в кодировке UTF-8. Размер файла не более 1 терабайта.
                 sendResponseToClient("NO", channel);
                 logger.trace("file name length {} ,  file size {}", fileMetaData.getFileName().length(), fileMetaData.getFileSize());
                 throw new IOException("file too large or file name too long");
@@ -157,6 +161,8 @@ public class Server {
                 recBuffer.limit(remaining);
 
                 recBytesNum += readFully(channel, recBuffer);
+                monitor.updateReceivedBytes(channel.getRemoteAddress().toString(), recBytesNum);
+
                 logger.trace("totally get {} bytes", recBytesNum);
 
                 while (recBuffer.hasRemaining()) {

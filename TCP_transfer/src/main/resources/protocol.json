@@ -1,6 +1,0 @@
-
-{
-  "fileName": String,
-  "fileSize": Long,
-  "data": String,
-}

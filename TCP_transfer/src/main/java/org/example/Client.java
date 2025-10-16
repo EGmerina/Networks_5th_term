@@ -16,9 +16,9 @@ import java.nio.file.Path;
 
 // Формат сообщения:
 // [4 байта - длина JSON] [JSON заголовок] [получить ответ сервера "OK"] [данные файла]
-
+//TODO DNS
 public class Client {
-    private Logger logger = LogManager.getLogger(Client.class);
+    private final Logger logger = LogManager.getLogger(Client.class);
     private static final int BUFFER_SIZE = 8192;
 
     public void start(Path path, InetSocketAddress inetSocketAddress) {
