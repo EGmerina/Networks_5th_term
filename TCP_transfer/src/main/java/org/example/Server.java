@@ -18,7 +18,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-//TODO add velocity , period 3 sec
 public class Server {
     private static final ObjectMapper mapper = new ObjectMapper();
     private final TransferStatsMonitor monitor = new TransferStatsMonitor();
@@ -146,7 +145,6 @@ public class Server {
 
     private void receiveFileData(SocketChannel channel, FileMetaData fileMetaData) throws IOException {
         long recBytesNum = 0;
-        //TODO тут надо правильно выбрать размер буфера и не читать лишнее
         ByteBuffer recBuffer = ByteBuffer.allocate(BUFFER_SIZE);
         Path filePath = Paths.get("uploads", fileMetaData.getFileName());
 

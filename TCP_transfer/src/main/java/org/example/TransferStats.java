@@ -39,6 +39,5 @@ public class TransferStats {
 
     public boolean getFlagToDelete() {
         return willBeDeleted;
-        //TODO тут по хорошему стопануть время для клиента
     }
 }
