@@ -40,7 +40,7 @@
       </ToolBar>
    </top>
    <center>
-      <ListView fx:id="listView" prefHeight="200.0" prefWidth="200.0" BorderPane.alignment="CENTER" />
+      <ListView fx:id="listView" prefHeight="200.0" prefWidth="200.0" style="-fx-font-size: 18px;" BorderPane.alignment="CENTER" />
    </center>
    <bottom>
       <TextFlow fx:id="weather" prefHeight="66.0" prefWidth="715.0" BorderPane.alignment="CENTER" />
