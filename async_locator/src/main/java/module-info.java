@@ -9,9 +9,6 @@ module org.example.async_locator {
     requires org.apache.logging.log4j;
     requires javafx.graphics;
     requires io.github.cdimascio.dotenv.java;
-    requires org.example.async_locator;
-
-
     opens org.example.async_locator to javafx.fxml;
     exports org.example.async_locator;
 }

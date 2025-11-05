@@ -34,6 +34,8 @@ public class UIController {
     private StackPane stackPane;
     @FXML
     private TextArea descTextArea;
+    @FXML
+    private Button back;
 
     @FXML
     public void initialize() {
@@ -44,9 +46,7 @@ public class UIController {
         locationsListView.setItems(locationObservableList);
         locationsListView.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal != null) {
-                locationsListView.setVisible(false);
-                placesListView.setVisible(true);
-                weatherTextFlow.setVisible(true);
+
                 handleLocationSelect(newVal);
             }
         });
@@ -57,6 +57,7 @@ public class UIController {
         locationObservableList.clear();
         receivedLocations.clear();
         inputField.clear();
+        back.setVisible(false);
         weatherTextFlow.setVisible(false);
         placesListView.setVisible(false);
         descTextArea.setVisible(false);
@@ -65,6 +66,7 @@ public class UIController {
 
     @FXML
     protected void onSearchButtonClick() {
+        back.setVisible(false);
         locationObservableList.clear();
         receivedLocations.clear();
         String query = inputField.getText();
@@ -81,8 +83,19 @@ public class UIController {
         });
     }
 
-    private void handleLocationSelect(String newVal) {
+    @FXML
+    protected void onBackButtonClick() {
+        placesListView.setVisible(false);
+        descTextArea.setVisible(false);
+        locationsListView.setVisible(true);
+        back.setVisible(false);
+    }
 
+    private void handleLocationSelect(String newVal) {
+        back.setVisible(true);
+        locationsListView.setVisible(false);
+        placesListView.setVisible(true);
+        weatherTextFlow.setVisible(true);
         openWeatherService.getWeather(receivedLocations.get(newVal)).thenAccept(weather -> {
             Platform.runLater(() -> {
                 Text text = new Text(weather.toString());

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
+<?import javafx.geometry.Insets?>
 <?import javafx.scene.control.Button?>
 <?import javafx.scene.control.Label?>
 <?import javafx.scene.control.ListView?>
@@ -17,6 +18,11 @@
    <top>
       <ToolBar prefHeight="75.0" prefWidth="715.0" BorderPane.alignment="CENTER">
          <items>
+            <Button fx:id="back" mnemonicParsing="false" onAction="#onBackButtonClick" prefHeight="42.0" prefWidth="60.0" text="&lt;=" visible="false">
+               <font>
+                  <Font size="21.0" />
+               </font>
+            </Button>
             <Label prefHeight="59.0" prefWidth="155.0" text="     Input location :">
                <font>
                   <Font size="18.0" />
@@ -37,6 +43,9 @@
                <font>
                   <Font size="18.0" />
                </font>
+               <opaqueInsets>
+                  <Insets />
+               </opaqueInsets>
             </Button>
          </items>
       </ToolBar>
