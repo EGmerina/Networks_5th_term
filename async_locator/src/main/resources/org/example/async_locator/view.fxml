@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Accordion?>
 <?import javafx.scene.control.Button?>
 <?import javafx.scene.control.Label?>
 <?import javafx.scene.control.ListView?>
-<?import javafx.scene.control.TextArea?>
 <?import javafx.scene.control.TextField?>
 <?import javafx.scene.control.ToolBar?>
 <?import javafx.scene.layout.BorderPane?>
@@ -57,8 +57,7 @@
       <StackPane fx:id="stackPane" prefHeight="150.0" prefWidth="200.0" BorderPane.alignment="CENTER">
          <children>
             <ListView fx:id="locationsListView" prefHeight="200.0" prefWidth="200.0" style="-fx-font-size: 18px;" />
-            <ListView fx:id="placesListView" prefHeight="200.0" prefWidth="200.0" visible="false" />
-            <TextArea fx:id="descTextArea" editable="false" prefHeight="200.0" prefWidth="200.0" visible="false" />
+            <Accordion fx:id="placesList" />
          </children>
       </StackPane>
    </center>

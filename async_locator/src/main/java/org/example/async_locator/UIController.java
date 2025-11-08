@@ -4,24 +4,27 @@ import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
-import javafx.scene.control.Button;
-import javafx.scene.control.ListView;
-import javafx.scene.control.TextArea;
-import javafx.scene.control.TextField;
+import javafx.scene.control.*;
 import javafx.scene.layout.StackPane;
 import javafx.scene.text.Text;
 import javafx.scene.text.TextFlow;
 import org.example.async_locator.models.Location;
+import org.example.async_locator.models.Place;
+import org.example.async_locator.models.Weather;
 import org.example.async_locator.services.GraphHopperService;
 import org.example.async_locator.services.OpenWeatherService;
+import org.example.async_locator.services.OverpassService;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 public class UIController {
     private final ObservableList<String> locationObservableList = FXCollections.observableArrayList();
     private final GraphHopperService graphHopperService = new GraphHopperService();
     private final OpenWeatherService openWeatherService = new OpenWeatherService();
+    private final OverpassService overpassService = new OverpassService();
     private final HashMap<String, Location> receivedLocations = new HashMap<>();
 
     @FXML
@@ -29,11 +32,11 @@ public class UIController {
     @FXML
     private TextField inputField;
     @FXML
-    private ListView<String> locationsListView, placesListView;
+    private ListView<String> locationsListView;
+    @FXML
+    private Accordion placesList;
     @FXML
     private StackPane stackPane;
-    @FXML
-    private TextArea descTextArea;
     @FXML
     private Button back;
 
@@ -59,8 +62,7 @@ public class UIController {
         inputField.clear();
         back.setVisible(false);
         weatherTextFlow.setVisible(false);
-        placesListView.setVisible(false);
-        descTextArea.setVisible(false);
+        placesList.setVisible(false);
         locationsListView.setVisible(true);
     }
 
@@ -85,22 +87,70 @@ public class UIController {
 
     @FXML
     protected void onBackButtonClick() {
-        placesListView.setVisible(false);
-        descTextArea.setVisible(false);
+        placesList.setVisible(false);
         locationsListView.setVisible(true);
         back.setVisible(false);
+        weatherTextFlow.setVisible(false);
     }
 
     private void handleLocationSelect(String newVal) {
         back.setVisible(true);
         locationsListView.setVisible(false);
-        placesListView.setVisible(true);
+        placesList.setVisible(true);
         weatherTextFlow.setVisible(true);
-        openWeatherService.getWeather(receivedLocations.get(newVal)).thenAccept(weather -> {
-            Platform.runLater(() -> {
-                Text text = new Text(weather.toString());
-                weatherTextFlow.getChildren().add(text);
-            });
-        });
+
+        Location location = receivedLocations.get(newVal);
+
+        CompletableFuture<Weather> weatherFuture = openWeatherService.getWeather(location);
+        CompletableFuture<ArrayList<Place>> placesFuture = overpassService.getPlaces(location);
+
+        weatherFuture.thenCombine(placesFuture, (weather, places) -> new Object[]{weather, places})
+                .thenCompose(result -> {
+                    Weather weather = (Weather) result[0];
+                    ArrayList<Place> places = (ArrayList<Place>) result[1];
+
+                    // создаём список задач на загрузку описаний
+                    var descriptionFutures = places.stream()
+                            .map(place -> overpassService.getDescription(place.getTag())
+                                    .thenApply(desc -> {
+                                        place.setDescription(desc);
+                                        return place;
+                                    }))
+                            .toList();
+
+                    // ждём, пока все описания загрузятся
+                    return CompletableFuture.allOf(descriptionFutures.toArray(new CompletableFuture[0]))
+                            .thenApply(v -> new Object[]{weather,
+                                    descriptionFutures.stream().map(CompletableFuture::join).toList()});
+                })
+
+                .thenAccept(result -> {
+                    Weather weather = (Weather) result[0];
+                    @SuppressWarnings("unchecked")
+                    var places = (List<Place>) result[1];
+
+                    Platform.runLater(() -> {
+                        weatherTextFlow.getChildren().clear();
+                        weatherTextFlow.getChildren().add(new Text(weather.toString()));
+
+                        placesList.getPanes().clear();
+                        for (Place place : places) {
+                            TitledPane pane = new TitledPane(
+                                    place.getName(),
+                                    new Label(place.getDescription() != null ? place.getDescription() : "Описание отсутствует")
+                            );
+                            placesList.getPanes().add(pane);
+                        }
+                    });
+                })
+
+                .exceptionally(ex -> {
+                    ex.printStackTrace();
+                    Platform.runLater(() -> {
+                        Alert alert = new Alert(Alert.AlertType.ERROR, "Ошибка: " + ex.getMessage(), ButtonType.OK);
+                        alert.showAndWait();
+                    });
+                    return null;
+                });
     }
 }

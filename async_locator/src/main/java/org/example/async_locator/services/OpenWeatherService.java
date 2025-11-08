@@ -39,7 +39,7 @@ public class OpenWeatherService {
         return client.get(url)
                 .thenApply(this::parseWeather)
                 .exceptionally(ex -> {
-                    logger.error("Ошибка при запросе GraphHopper: {}", ex.getMessage(), ex);
+                    logger.error("Ошибка при запросе OpenWeather: {}", ex.getMessage(), ex);
                     return new Weather(0, "can't get weather");
                 });
     }
