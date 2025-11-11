@@ -37,45 +37,85 @@ public class OverpassService {
     }
 
     private CompletableFuture<ArrayList<Place>> loadFromOverpass(Location location) {
-        String query = String.format("[out:json];node(around:1000,%f,%f)[tourism~\"museum|attraction|artwork|gallery|monument\"];out;", location.lat(), location.lon());
-        String url = "https://overpass-api.de/api/interpreter?data=" + URLEncoder.encode(query, StandardCharsets.UTF_8);
-        logger.info("Запрос к Overpass API: {}", url);
 
-        return client.get(url)
-                .thenApply(this::parsePlaces)
+        String query = String.format(
+                "[out:json][timeout:25];" +
+                        "node(around:1000,%f,%f)" +
+                        "[tourism~\"museum|attraction|artwork|gallery|monument\"];" +
+                        "out;",
+                location.lat(), location.lon()
+        );
+
+        String url = "https://overpass-api.de/api/interpreter";
+
+        String payload = "data=" + URLEncoder.encode(query, StandardCharsets.UTF_8);
+
+        logger.info("Запрос к Overpass API (POST): {}", url);
+
+        return client.post(url, payload)
+                .thenApply(this::safeParsePlaces)
                 .exceptionally(ex -> {
                     logger.error("Ошибка при запросе к Overpass: {}", ex.getMessage(), ex);
-                    return new ArrayList<Place>();
+                    return new ArrayList<>();
                 });
+    }
+
+    private ArrayList<Place> safeParsePlaces(String body) {
+
+        if (body == null || body.isBlank()) {
+            logger.error("Пустой ответ от Overpass");
+            return new ArrayList<>();
+        }
+
+
+        if (!body.trim().startsWith("{")) {
+            logger.error("Overpass вернул НЕ JSON. Ответ:\n{}",
+                    body.substring(0, Math.min(body.length(), 500)));
+            return new ArrayList<>();
+        }
+
+        return parsePlaces(body);
     }
 
     public CompletableFuture<String> getDescription(String wikipediaTag) {
         if (wikipediaTag == null) {
-            return CompletableFuture.completedFuture("Описание недоступно");
+            return CompletableFuture.completedFuture(null);
         }
 
-        String[] parts = wikipediaTag.split(":");
-        if (parts.length < 2) {
-            return CompletableFuture.completedFuture("Некорректная ссылка Wikipedia");
-        }
-
-        String lang = parts[0];
-        String title = URLEncoder.encode(parts[1], StandardCharsets.UTF_8);
-        String url = String.format("https://%s.wikipedia.org/api/rest_v1/page/summary/%s", lang, title);
+        String url = String.format("https://www.wikidata.org/wiki/Special:EntityData/%s.json", wikipediaTag);
 
 
         return client.get(url)
-                .thenApply(this::parseDescription)
+                .thenApply(body -> parseDescription(body, wikipediaTag))
                 .exceptionally(ex -> {
-                    logger.error("Ошибка при запросе к Overpass: {}", ex.getMessage(), ex);
-                    return new String("");
+                    logger.error("Ошибка при запросе description: {}, tag {}", ex.getMessage(), ex, wikipediaTag);
+                    return null;
                 });
 
     }
 
-    private String parseDescription(String body) {
-        JsonObject json = JsonParser.parseString(body).getAsJsonObject();
-        return json.has("extract") ? json.get("extract").getAsString() : "Описание отсутствует";
+    private String parseDescription(String body, String tag) {
+        JsonObject root = JsonParser.parseString(body).getAsJsonObject();
+
+        JsonObject entities = root.getAsJsonObject("entities");
+        if (entities == null || !entities.has(tag)) return null;
+
+        JsonObject entity = entities.getAsJsonObject(tag);
+
+        JsonObject descriptions = entity.getAsJsonObject("descriptions");
+        if (descriptions == null) return null;
+
+        // Сначала пробуем русский
+        if (descriptions.has("ru")) {
+            return descriptions.getAsJsonObject("ru").get("value").getAsString();
+        }
+
+        // Если нет — пробуем английский
+        if (descriptions.has("en")) {
+            return descriptions.getAsJsonObject("en").get("value").getAsString();
+        }
+
+        return null;
     }
 
 
@@ -90,8 +130,8 @@ public class OverpassService {
             JsonObject tags = obj.has("tags") ? obj.getAsJsonObject("tags") : null;
             if (tags == null || !tags.has("name")) continue;
             String name = tags.get("name").getAsString();
-            String wiki = tags.has("wikipedia") ? tags.get("wikipedia").getAsString() : null;
-            places.add(new Place(name, wiki, null));
+            String wiki = tags.has("wikidata") ? tags.get("wikidata").getAsString() : null;
+            places.add(new Place(wiki, name, null));
         }
         return places;
     }

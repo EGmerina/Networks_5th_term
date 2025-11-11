@@ -30,13 +30,13 @@ public class UIController {
     @FXML
     private TextFlow weatherTextFlow;
     @FXML
+    private ScrollPane scrollPane;
+    @FXML
     private TextField inputField;
     @FXML
     private ListView<String> locationsListView;
     @FXML
     private Accordion placesList;
-    @FXML
-    private StackPane stackPane;
     @FXML
     private Button back;
 
@@ -46,6 +46,7 @@ public class UIController {
     }
 
     private void initListView() {
+        goToLocationsList();
         locationsListView.setItems(locationObservableList);
         locationsListView.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal != null) {
@@ -60,19 +61,17 @@ public class UIController {
         locationObservableList.clear();
         receivedLocations.clear();
         inputField.clear();
-        back.setVisible(false);
-        weatherTextFlow.setVisible(false);
-        placesList.setVisible(false);
-        locationsListView.setVisible(true);
+        placesList.getPanes().clear();
+        goToLocationsList();
     }
 
     @FXML
     protected void onSearchButtonClick() {
-        back.setVisible(false);
+        goToLocationsList();
         locationObservableList.clear();
         receivedLocations.clear();
         String query = inputField.getText();
-        if (query.equals("")) {
+        if (query.equals("")) { //TODO white space
             return;
         }
         graphHopperService.getLocations(query).thenAccept(locations -> {
@@ -87,17 +86,11 @@ public class UIController {
 
     @FXML
     protected void onBackButtonClick() {
-        placesList.setVisible(false);
-        locationsListView.setVisible(true);
-        back.setVisible(false);
-        weatherTextFlow.setVisible(false);
+        goToLocationsList();
     }
 
     private void handleLocationSelect(String newVal) {
-        back.setVisible(true);
-        locationsListView.setVisible(false);
-        placesList.setVisible(true);
-        weatherTextFlow.setVisible(true);
+        goToPlacesList();
 
         Location location = receivedLocations.get(newVal);
 
@@ -118,7 +111,7 @@ public class UIController {
                                     }))
                             .toList();
 
-                    // ждём, пока все описания загрузятся
+
                     return CompletableFuture.allOf(descriptionFutures.toArray(new CompletableFuture[0]))
                             .thenApply(v -> new Object[]{weather,
                                     descriptionFutures.stream().map(CompletableFuture::join).toList()});
@@ -152,5 +145,21 @@ public class UIController {
                     });
                     return null;
                 });
+    }
+
+    private void goToLocationsList() {
+        back.setVisible(false);
+        weatherTextFlow.setVisible(false);
+        scrollPane.setVisible(false);
+      //  placesList.setVisible(false);
+        locationsListView.setVisible(true);
+    }
+
+    private void goToPlacesList() {
+        back.setVisible(true);
+        locationsListView.setVisible(false);
+        scrollPane.setVisible(true);
+       // placesList.setVisible(true);
+        weatherTextFlow.setVisible(true);
     }
 }
