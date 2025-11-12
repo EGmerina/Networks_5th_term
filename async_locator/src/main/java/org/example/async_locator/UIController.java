@@ -28,6 +28,8 @@ public class UIController {
     private final HashMap<String, Location> receivedLocations = new HashMap<>();
 
     @FXML
+    private Label infoLabel;
+    @FXML
     private TextFlow weatherTextFlow;
     @FXML
     private ScrollPane scrollPane;
@@ -91,7 +93,7 @@ public class UIController {
 
     private void handleLocationSelect(String newVal) {
         goToPlacesList();
-
+        infoLabel.setText("Loading...");
         Location location = receivedLocations.get(newVal);
 
         CompletableFuture<Weather> weatherFuture = openWeatherService.getWeather(location);
@@ -128,11 +130,18 @@ public class UIController {
 
                         placesList.getPanes().clear();
                         for (Place place : places) {
+                            if (place.getDescription() == null) {
+                                continue;
+                            }
                             TitledPane pane = new TitledPane(
                                     place.getName(),
-                                    new Label(place.getDescription() != null ? place.getDescription() : "Описание отсутствует")
-                            );
+                                    new Label(place.getDescription()));
                             placesList.getPanes().add(pane);
+                        }
+                        if (placesList.getPanes().isEmpty()) {
+                            infoLabel.setText("Empty");
+                        } else {
+                            infoLabel.setText("");
                         }
                     });
                 })
@@ -151,15 +160,18 @@ public class UIController {
         back.setVisible(false);
         weatherTextFlow.setVisible(false);
         scrollPane.setVisible(false);
-      //  placesList.setVisible(false);
+        //  placesList.setVisible(false);
         locationsListView.setVisible(true);
+        infoLabel.setText("");
+        placesList.getPanes().clear();
     }
 
     private void goToPlacesList() {
         back.setVisible(true);
         locationsListView.setVisible(false);
         scrollPane.setVisible(true);
-       // placesList.setVisible(true);
+        // placesList.setVisible(true);
         weatherTextFlow.setVisible(true);
+
     }
 }

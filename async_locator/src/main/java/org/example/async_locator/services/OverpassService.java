@@ -10,7 +10,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.example.async_locator.models.Location;
 import org.example.async_locator.models.Place;
-import org.example.async_locator.models.Weather;
+
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -42,7 +42,7 @@ public class OverpassService {
                 "[out:json][timeout:25];" +
                         "node(around:1000,%f,%f)" +
                         "[tourism~\"museum|attraction|artwork|gallery|monument\"];" +
-                        "out;",
+                        "out 10;",     //TODO!
                 location.lat(), location.lon()
         );
 
