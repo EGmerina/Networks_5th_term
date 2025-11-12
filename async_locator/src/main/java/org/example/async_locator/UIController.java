@@ -25,9 +25,10 @@ public class UIController {
     private final ObservableList<String> locationObservableList = FXCollections.observableArrayList();
     private final GraphHopperService graphHopperService = new GraphHopperService();
     private final OpenWeatherService openWeatherService = new OpenWeatherService();
-    private final OverpassService overpassService = new OverpassService();
+    // private final OverpassService overpassService = new OverpassService();
     private final FoursquareService foursquareService = new FoursquareService();
     private final HashMap<String, Location> receivedLocations = new HashMap<>();
+    private String lastSelected = null;
 
     @FXML
     private Label infoLabel;
@@ -47,6 +48,7 @@ public class UIController {
     @FXML
     public void initialize() {
         initListView();
+        scrollPane.setFitToWidth(true);
     }
 
     private void initListView() {
@@ -58,6 +60,7 @@ public class UIController {
                 handleLocationSelect(newVal);
             }
         });
+
     }
 
     @FXML
@@ -91,6 +94,7 @@ public class UIController {
     @FXML
     protected void onBackButtonClick() {
         goToLocationsList();
+        locationsListView.getSelectionModel().clearSelection();
     }
 
     private void handleLocationSelect(String newVal) {
@@ -162,7 +166,6 @@ public class UIController {
         back.setVisible(false);
         weatherTextFlow.setVisible(false);
         scrollPane.setVisible(false);
-        //  placesList.setVisible(false);
         locationsListView.setVisible(true);
         infoLabel.setText("");
         placesList.getPanes().clear();
@@ -172,7 +175,6 @@ public class UIController {
         back.setVisible(true);
         locationsListView.setVisible(false);
         scrollPane.setVisible(true);
-        // placesList.setVisible(true);
         weatherTextFlow.setVisible(true);
 
     }

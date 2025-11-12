@@ -18,31 +18,25 @@ import java.util.concurrent.CompletableFuture;
 
 public class FoursquareService {
     private static final Logger logger = LogManager.getLogger(FoursquareService.class);
-    private static final String BASE_URL = "https://places-api.foursquare.com/places/search";
-
     private final AsyncHttpClient client;
     private final AsyncLoadingCache<Location, CompletableFuture<ArrayList<Place>>> cache;
 
     public FoursquareService() {
         this.client = new AsyncHttpClient();
 
-        // Настраиваем кэш (5 минут жизни, максимум 1000 записей)
+
         this.cache = Caffeine.newBuilder()
                 .expireAfterWrite(Duration.ofMinutes(5))
                 .maximumSize(1000)
                 .buildAsync(this::loadFromFoursquare);
     }
 
-    /**
-     * Основной метод получения мест — берёт из кэша или запрашивает у API
-     */
+
     public CompletableFuture<ArrayList<Place>> getPlaces(Location location) {
         return cache.get(location).thenCompose(f -> f);
     }
 
-    /**
-     * Загружает реальные данные из Foursquare API
-     */
+
     private CompletableFuture<ArrayList<Place>> loadFromFoursquare(Location location) {
         String url = String.format(
                 "https://places-api.foursquare.com/places/search?ll=%.6f,%.6f&radius=1000&limit=10&categories=16000,13065",
@@ -59,9 +53,7 @@ public class FoursquareService {
                 });
     }
 
-    /**
-     * Проверяет, что ответ действительно JSON и не пустой
-     */
+
     private ArrayList<Place> safeParsePlaces(String body) {
         if (body == null || body.isBlank()) {
             logger.error("Пустой ответ от Foursquare");
@@ -76,9 +68,7 @@ public class FoursquareService {
         return parsePlaces(body);
     }
 
-    /**
-     * Разбирает JSON и создаёт список мест
-     */
+
     private ArrayList<Place> parsePlaces(String body) {
         ArrayList<Place> places = new ArrayList<>();
         JsonObject root = JsonParser.parseString(body).getAsJsonObject();
@@ -116,7 +106,7 @@ public class FoursquareService {
 
         return client.getWithAuth(url, ApiKeys.FORSQUARE_KEY)
                 .thenApply(response -> {
-                    logger.info("Ответ от Foursquare: {}", response);
+                    // logger.info("Ответ от Foursquare: {}", response);
                     return parseDescription(response);
                 })
                 .exceptionally(ex -> {
