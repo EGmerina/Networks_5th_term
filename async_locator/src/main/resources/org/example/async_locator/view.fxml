@@ -57,10 +57,10 @@
    <center>
       <StackPane fx:id="stackPane" prefHeight="150.0" prefWidth="200.0" BorderPane.alignment="CENTER">
          <children>
-            <ListView fx:id="locationsListView" prefHeight="200.0" prefWidth="200.0" style="-fx-font-size: 18px;" />
+            <ListView fx:id="locationsListView" prefHeight="200.0" prefWidth="200.0" style="-fx-font-family: 'Noto Sans CJK JP'; -fx-font-size: 18px;" />
             <ScrollPane fx:id="scrollPane" prefHeight="200.0" prefWidth="200.0" visible="false">
                <content>
-                  <Accordion fx:id="placesList" maxWidth="1.7976931348623157E308" style="-fx-font-size: 18px; " />
+                  <Accordion fx:id="placesList" maxWidth="1.7976931348623157E308" style="-fx-font-family: 'Noto Sans CJK JP'; -fx-font-size: 18px; " />
                </content>
             </ScrollPane>
             <Label fx:id="infoLabel">

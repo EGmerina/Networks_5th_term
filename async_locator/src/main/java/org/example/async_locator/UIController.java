@@ -11,6 +11,7 @@ import javafx.scene.text.TextFlow;
 import org.example.async_locator.models.Location;
 import org.example.async_locator.models.Place;
 import org.example.async_locator.models.Weather;
+import org.example.async_locator.services.FoursquareService;
 import org.example.async_locator.services.GraphHopperService;
 import org.example.async_locator.services.OpenWeatherService;
 import org.example.async_locator.services.OverpassService;
@@ -25,6 +26,7 @@ public class UIController {
     private final GraphHopperService graphHopperService = new GraphHopperService();
     private final OpenWeatherService openWeatherService = new OpenWeatherService();
     private final OverpassService overpassService = new OverpassService();
+    private final FoursquareService foursquareService = new FoursquareService();
     private final HashMap<String, Location> receivedLocations = new HashMap<>();
 
     @FXML
@@ -97,7 +99,7 @@ public class UIController {
         Location location = receivedLocations.get(newVal);
 
         CompletableFuture<Weather> weatherFuture = openWeatherService.getWeather(location);
-        CompletableFuture<ArrayList<Place>> placesFuture = overpassService.getPlaces(location);
+        CompletableFuture<ArrayList<Place>> placesFuture = foursquareService.getPlaces(location);
 
         weatherFuture.thenCombine(placesFuture, (weather, places) -> new Object[]{weather, places})
                 .thenCompose(result -> {
@@ -106,7 +108,7 @@ public class UIController {
 
                     // создаём список задач на загрузку описаний
                     var descriptionFutures = places.stream()
-                            .map(place -> overpassService.getDescription(place.getTag())
+                            .map(place -> foursquareService.getDescription(place.getTag())
                                     .thenApply(desc -> {
                                         place.setDescription(desc);
                                         return place;
