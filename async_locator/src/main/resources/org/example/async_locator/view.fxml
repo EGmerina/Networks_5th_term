@@ -60,7 +60,7 @@
             <ListView fx:id="locationsListView" prefHeight="200.0" prefWidth="200.0" style="-fx-font-size: 18px;" />
             <ScrollPane fx:id="scrollPane" prefHeight="200.0" prefWidth="200.0" visible="false">
                <content>
-                  <Accordion fx:id="placesList" style="-fx-font-size: 18px; -fx-pref-width: 100%;"  />
+                  <Accordion fx:id="placesList" maxWidth="1.7976931348623157E308" style="-fx-font-size: 18px; " />
                </content>
             </ScrollPane>
             <Label fx:id="infoLabel">

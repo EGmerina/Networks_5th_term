@@ -38,15 +38,13 @@ public class OverpassService {
 
     private CompletableFuture<ArrayList<Place>> loadFromOverpass(Location location) {
 
-        String query = String.format(
-                "[out:json][timeout:25];" +
-                        "node(around:1000,%f,%f)" +
-                        "[tourism~\"museum|attraction|artwork|gallery|monument\"];" +
-                        "out 10;",     //TODO!
-                location.lat(), location.lon()
-        );
+        String around = String.format("around:250,%f,%f", location.lat(), location.lon());
+        String query = "[out:json][timeout:15];(" +
+                "node(" + around + ")[tourism=museum];" +
+                "node(" + around + ")[tourism=monument];" +
+                ");out 10;";
 
-        String url = "https://overpass-api.de/api/interpreter";
+        String url = "https://z.overpass-api.de/api/interpreter";
 
         String payload = "data=" + URLEncoder.encode(query, StandardCharsets.UTF_8);
 
