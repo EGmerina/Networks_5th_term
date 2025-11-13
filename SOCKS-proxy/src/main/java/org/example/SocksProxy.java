@@ -15,11 +15,21 @@ import java.util.Set;
 
 public class SocksProxy {
     private static final Logger logger = LogManager.getLogger(SocksProxy.class);
-    private static final int CLIENT_BUFFER_SIZE = 1024;
+    private static final int DATA_BUFFER_SIZE = 8192;
+    private final Selector selector;
+
+    public SocksProxy() {
+        try {
+            selector = Selector.open();
+        } catch (IOException e) {
+            logger.error("can't open selector");
+            throw new RuntimeException(e);
+        }
+    }
 
     public void start(int port) {
         logger.info("SocksProxy started on port {}", port);
-        try (Selector selector = Selector.open(); ServerSocketChannel serverSocketChannel = ServerSocketChannel.open()) {
+        try (selector; ServerSocketChannel serverSocketChannel = ServerSocketChannel.open()) {
             serverSocketChannel.configureBlocking(false);
             serverSocketChannel.bind(new InetSocketAddress(port));
             serverSocketChannel.register(selector, SelectionKey.OP_ACCEPT);
@@ -38,10 +48,13 @@ public class SocksProxy {
                     }
                     try {
                         if (key.isAcceptable()) {
-                            handleAccept((ServerSocketChannel) key.channel(), selector);
-                        }
-                        if (key.isReadable()) {
+                            handleAccept((ServerSocketChannel) key.channel());
+                        } else if (key.isConnectable()) {
+                            handleConnect(key);
+                        } else if (key.isReadable()) {
                             handleRead(key);
+                        } else if (key.isWritable()) {
+                            handleWrite(key);
                         }
                     } catch (IOException e) {
                         logger.warn("client close connection unexpected: " + e.getMessage());
@@ -58,7 +71,8 @@ public class SocksProxy {
         }
     }
 
-    private void handleAccept(ServerSocketChannel channel, Selector selector) {
+
+    private void handleAccept(ServerSocketChannel channel) {
         try {
             SocketChannel clientSocket = channel.accept();
             clientSocket.configureBlocking(false);
@@ -72,20 +86,73 @@ public class SocksProxy {
 
     }
 
+
+    private void handleConnect(SelectionKey key) {
+    }
+
+    private void handleWrite(SelectionKey key) {
+    }
+
+
     private void handleRead(SelectionKey key) throws IOException {
         SocketChannel socketChannel = (SocketChannel) key.channel();
         Connection currentConnection = (Connection) key.attachment();
-        ByteBuffer buffer = currentConnection.getBuffer();
+        ProtocolStage stage = currentConnection.getStage();
+        switch (stage) {
+            case METHOD -> {
+                sendMethodToClient();
+            }
+            case STATUS -> {
+                sendStatusToClient();
+            }
+            case CONNECTING -> {
+                connectToRemote();
+            }
+            case RELAY -> {
+                relayData(socketChannel, currentConnection);
+            }
+            case CLOSING -> {
+            }
+            default -> {
+                logger.error("unknown protocol stage of client {}", socketChannel.getRemoteAddress());
+            }
 
-        int bytesReadNum = 0;
-        bytesReadNum = socketChannel.read(buffer);
+        }
 
-        if (bytesReadNum == -1) {
-            closeConnection(key);
+    }
+
+    private void sendMethodToClient() {
+    }
+
+    private void sendStatusToClient() {
+        
+        
+    }
+
+    private void connectToRemote() {
+        
+        
+    }
+
+
+    private void relayData(SocketChannel socketChannel, Connection currentConnection) throws IOException {
+        SocketChannel remoteChannel = currentConnection.getRemote();
+        if (!remoteChannel.isConnected()) {
             return;
-        } else if (bytesReadNum > 0) {
-            buffer.flip();
-
+        }
+        ByteBuffer buffer = ByteBuffer.allocate(DATA_BUFFER_SIZE);
+        int bytesNum = socketChannel.read(buffer);
+        if (bytesNum == -1) {
+            throw new IOException("end of stream");
+        } else if (bytesNum == 0) {
+            return;
+        }
+        buffer.flip();
+        remoteChannel.write(buffer);
+        if (buffer.hasRemaining()) {
+            currentConnection.getPending().add(buffer);
+            SelectionKey remoteKey = remoteChannel.keyFor(selector);
+            remoteKey.interestOps(remoteKey.interestOps() | SelectionKey.OP_WRITE);
         }
 
     }
@@ -94,7 +161,7 @@ public class SocksProxy {
         SocketChannel socketChannel = (SocketChannel) key.channel();
         Connection currentConnection = (Connection) key.attachment();
         currentConnection.getPending().clear();
-        currentConnection.getBuffer().clear();
+        currentConnection.getHandshakeBuffer().clear();
         SocketChannel remote = currentConnection.getRemote();
         if (remote != null) {
             remote.close();

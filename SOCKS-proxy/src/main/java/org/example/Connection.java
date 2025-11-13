@@ -5,8 +5,8 @@ import java.nio.channels.SocketChannel;
 import java.util.ArrayDeque;
 import java.util.Queue;
 
-public class Connection {
-    private final ByteBuffer buffer = ByteBuffer.allocate(1024); //for handshake and so on
+public class Connection { // private static final int MAX_QUEUE_SIZE = 100;
+    private final ByteBuffer handshakeBuffer = ByteBuffer.allocate(256); //for handshake and so on
     private SocketChannel remote = null;
     private final Queue<ByteBuffer> pending = new ArrayDeque<>();
     private ProtocolStage stage = ProtocolStage.METHOD;
@@ -23,7 +23,7 @@ public class Connection {
         return remote;
     }
 
-    public ByteBuffer getBuffer() {
-        return buffer;
+    public ByteBuffer getHandshakeBuffer() {
+        return handshakeBuffer;
     }
 }
