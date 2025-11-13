@@ -14,7 +14,7 @@ import org.example.async_locator.models.Weather;
 import org.example.async_locator.services.FoursquareService;
 import org.example.async_locator.services.GraphHopperService;
 import org.example.async_locator.services.OpenWeatherService;
-import org.example.async_locator.services.OverpassService;
+
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -25,7 +25,6 @@ public class UIController {
     private final ObservableList<String> locationObservableList = FXCollections.observableArrayList();
     private final GraphHopperService graphHopperService = new GraphHopperService();
     private final OpenWeatherService openWeatherService = new OpenWeatherService();
-    // private final OverpassService overpassService = new OverpassService();
     private final FoursquareService foursquareService = new FoursquareService();
     private final HashMap<String, Location> receivedLocations = new HashMap<>();
     private String lastSelected = null;
@@ -78,7 +77,7 @@ public class UIController {
         locationObservableList.clear();
         receivedLocations.clear();
         String query = inputField.getText();
-        if (query.equals("")) { //TODO white space
+        if (query.equals("")) {
             return;
         }
         graphHopperService.getLocations(query).thenAccept(locations -> {
@@ -110,7 +109,7 @@ public class UIController {
                     Weather weather = (Weather) result[0];
                     ArrayList<Place> places = (ArrayList<Place>) result[1];
 
-                    // создаём список задач на загрузку описаний
+
                     var descriptionFutures = places.stream()
                             .map(place -> foursquareService.getDescription(place.getTag())
                                     .thenApply(desc -> {
