@@ -36,17 +36,21 @@ public class SocksProxy {
                         iterator.remove();
                         continue;
                     }
-                    if (key.isAcceptable()) {
-                        handleAccept((ServerSocketChannel) key.channel(), selector);
+                    try {
+                        if (key.isAcceptable()) {
+                            handleAccept((ServerSocketChannel) key.channel(), selector);
+                        }
+                        if (key.isReadable()) {
+                            handleRead(key);
+                        }
+                    } catch (IOException e) {
+                        logger.warn("client close connection unexpected: " + e.getMessage());
+                        closeConnection(key);
                     }
-                    if (key.isReadable()) {
-                        handleRead(key);
-                    }
-                    //TODO закрывать channel при ошибке
                 }
 
-            }
 
+            }
 
         } catch (IOException e) {
             logger.error("exception during working server: " + e.getMessage() + " and suppressed:" + e.getSuppressed());
@@ -58,7 +62,8 @@ public class SocksProxy {
         try {
             SocketChannel clientSocket = channel.accept();
             clientSocket.configureBlocking(false);
-            clientSocket.register(selector, SelectionKey.OP_READ, ByteBuffer.allocate(CLIENT_BUFFER_SIZE)); //пока только handshake
+            Connection newConnection = new Connection();
+            clientSocket.register(selector, SelectionKey.OP_READ, newConnection); //пока только handshake
             logger.info("client {} was accepted", clientSocket.getRemoteAddress());
         } catch (IOException e) {
             logger.error("can't accept socketChannel ");
@@ -67,32 +72,34 @@ public class SocksProxy {
 
     }
 
-    private void handleRead(SelectionKey key) {
+    private void handleRead(SelectionKey key) throws IOException {
         SocketChannel socketChannel = (SocketChannel) key.channel();
-        ByteBuffer buffer = (ByteBuffer) key.attachment();
-        if (buffer == null) {
-            logger.warn("buffer is null .why?");
-            return;
-        }
+        Connection currentConnection = (Connection) key.attachment();
+        ByteBuffer buffer = currentConnection.getBuffer();
+
         int bytesReadNum = 0;
-        try {
-            bytesReadNum = socketChannel.read(buffer);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        bytesReadNum = socketChannel.read(buffer);
+
         if (bytesReadNum == -1) {
             closeConnection(key);
             return;
         } else if (bytesReadNum > 0) {
             buffer.flip();
-//            if (1 > 0) {
-//            }
+
         }
 
     }
 
-    private void closeConnection(SelectionKey key) {
+    private void closeConnection(SelectionKey key) throws IOException {
+        SocketChannel socketChannel = (SocketChannel) key.channel();
+        Connection currentConnection = (Connection) key.attachment();
+        currentConnection.getPending().clear();
+        currentConnection.getBuffer().clear();
+        SocketChannel remote = currentConnection.getRemote();
+        if (remote != null) {
+            remote.close();
+        }
+        socketChannel.close();
+        key.cancel();
     }
-
-
 }
