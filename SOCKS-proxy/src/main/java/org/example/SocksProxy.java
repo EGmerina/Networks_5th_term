@@ -74,13 +74,18 @@ public class SocksProxy {
             logger.warn("buffer is null .why?");
             return;
         }
-        int bytesReadNum = socketChannel.read(buffer);
+        int bytesReadNum = 0;
+        try {
+            bytesReadNum = socketChannel.read(buffer);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
         if (bytesReadNum == -1) {
             closeConnection(key);
             return;
         } else if (bytesReadNum > 0){
             buffer.flip();
-            if()
+//            if()
         }
 
     }
