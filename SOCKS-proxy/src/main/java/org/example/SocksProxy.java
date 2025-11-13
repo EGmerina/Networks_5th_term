@@ -83,9 +83,10 @@ public class SocksProxy {
         if (bytesReadNum == -1) {
             closeConnection(key);
             return;
-        } else if (bytesReadNum > 0){
+        } else if (bytesReadNum > 0) {
             buffer.flip();
-//            if()
+//            if (1 > 0) {
+//            }
         }
 
     }
