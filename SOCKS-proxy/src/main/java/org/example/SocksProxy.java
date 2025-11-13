@@ -6,10 +6,7 @@ import org.apache.logging.log4j.Logger;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
-import java.nio.channels.SelectionKey;
-import java.nio.channels.Selector;
-import java.nio.channels.ServerSocketChannel;
-import java.nio.channels.SocketChannel;
+import java.nio.channels.*;
 import java.nio.charset.StandardCharsets;
 import java.util.Iterator;
 import java.util.Set;
@@ -26,6 +23,11 @@ public class SocksProxy {
             logger.error("can't open selector");
             throw new RuntimeException(e);
         }
+        DatagramChannel dnsChannel = DatagramChannel.open();
+        dnsChannel.configureBlocking(false);
+        dnsChannel.bind(null); // случайный локальный порт
+
+        SelectionKey dnsKey = dnsChannel.register(selector, SelectionKey.OP_READ);
     }
 
     public void start(int port) {
@@ -87,6 +89,7 @@ public class SocksProxy {
 
     }
 
+    //TODO в итоге буду малодушно не отвечать клиенту если какая-то ошибка
 
     private void handleConnect(SelectionKey key) throws IOException {
         SocketChannel remote = (SocketChannel) key.channel();
@@ -111,7 +114,14 @@ public class SocksProxy {
         }
     }
 
-    private void handleWrite(SelectionKey key) {
+    private void handleWrite(SelectionKey key) throws IOException {
+        SocketChannel socketChannel = (SocketChannel) key.channel();
+        Connection currentConnection = (Connection) key.attachment();
+        ByteBuffer buffer = currentConnection.getFromQueue(key);
+        currentConnection.getRemote().write(buffer);
+        if (buffer.hasRemaining()) {
+            currentConnection.pushToQueue(buffer);
+        }
     }
 
 
@@ -122,9 +132,6 @@ public class SocksProxy {
         switch (stage) {
             case METHOD -> {
                 sendMethodToClient(currentConnection);
-            }
-            case STATUS -> {
-                sendStatusToClient(currentConnection);
             }
             case CONNECTING -> {
                 connectToRemote(currentConnection);
@@ -144,50 +151,27 @@ public class SocksProxy {
 
     private void sendMethodToClient(Connection connection) throws IOException {
         ByteBuffer buffer = connection.getHandshakeBuffer();
-        if (buffer.remaining() < 2) return;
-        buffer.mark();
-        byte ver = buffer.get();
-        byte methodsNum = buffer.get();
-        if (buffer.remaining() < methodsNum) {
-            buffer.reset();
-            return;
-        }
-        boolean noauth = false;
-        for (int i = 0; i < methodsNum; i++) {
-            byte m = buffer.get();
-            if (m == 0x00) noauth = true;
-        }
-        if (ver != 0x05 || !noauth) {
+
+        boolean ok = false;
+        try {
+            ok = ProtocolExecutor.checkMethod(buffer);
+        } catch (IOException e) {
             clientWriteRaw(connection, ByteBuffer.wrap(new byte[]{0x05, (byte) 0xff}));
-            throw new IOException("version socks isn't 5 or unsupported connection");
+            throw e;
+        }
+        if (!ok) {
+            return;//wait
         }
         buffer.clear();
         clientWriteRaw(connection, ByteBuffer.wrap(new byte[]{0x05, 0x00}));
-        connection.setStage(ProtocolStage.STATUS);
-    }
-
-    private void sendStatusToClient(Connection connection) {
-        ByteBuffer buffer = connection.getHandshakeBuffer();
-
         connection.setStage(ProtocolStage.CONNECTING);
     }
+
 
     private void connectToRemote(Connection connection) throws IOException {
         ByteBuffer buf = connection.getHandshakeBuffer();
 
-        if (buf.remaining() < 4) return; // need VER CMD RSV ATYP
-
-        buf.mark();
-        byte ver = buf.get();
-        byte cmd = buf.get();
-        byte rsv = buf.get();
-        byte atyp = buf.get();
-
-        if (ver != 0x05) throw new IOException("invalid socks5 version");
-        if (cmd != 0x01) { // only CONNECT supported
-            //sendSocksReply(conn, (byte) 0x07);
-            throw new IOException("unsupported command");
-        }
+        byte atyp = ProtocolExecutor.getAType(buf);
 
         InetSocketAddress targetAddr = null;
 
@@ -197,16 +181,7 @@ public class SocksProxy {
                     buf.reset();
                     return;
                 }
-                byte[] ip4 = new byte[4];
-                buf.get(ip4);
-                int port = (buf.get() & 0xFF) << 8 | (buf.get() & 0xFF);
-
-                String ipStr = (ip4[0] & 0xff) + "." +
-                        (ip4[1] & 0xff) + "." +
-                        (ip4[2] & 0xff) + "." +
-                        (ip4[3] & 0xff);
-
-                targetAddr = new InetSocketAddress(ipStr, port);
+                targetAddr = ProtocolExecutor.getInetSocketAddress(buf);
             }
             break;
 
@@ -228,20 +203,41 @@ public class SocksProxy {
                 String domain = new String(dom, StandardCharsets.US_ASCII);
                 int port = (buf.get() & 0xFF) << 8 | (buf.get() & 0xFF);
 
-                // Go to DNS resolving
                 buf.clear();
-                startAsyncDnsResolve(conn, domain, port);
+                startAsyncDnsResolve(connection, domain, port);
                 connection.setStage(ProtocolStage.RESOLVING_DNS);
                 return;
             }
-
+            case 0x07: {
+                return;
+            }
             default:
-                // sendSocksReply(conn, (byte) 0x08);
                 throw new IOException("unsupported address type");
         }
 
         buf.clear();
         startNonBlockingConnect(connection, targetAddr);
+    }
+
+    private void startAsyncDnsResolve(Connection conn, String domain, int port) throws IOException {
+        // Create DNS query using dnsjava
+        org.xbill.DNS.Record rec = org.xbill.DNS.Record.newRecord(
+                org.xbill.DNS.Name.fromString(domain + "."),
+                org.xbill.DNS.Type.A,
+                org.xbill.DNS.DClass.IN
+        );
+
+        org.xbill.DNS.Message query = org.xbill.DNS.Message.newQuery(rec);
+
+        int qid = query.getHeader().getID();
+
+        pendingDns.put(qid, conn);
+        conn.setDnsPort(port);
+
+        byte[] out = query.toWire();
+
+        ByteBuffer packet = ByteBuffer.wrap(out);
+        dnsChannel.send(packet, dnsResolverAddr);
     }
 
     private void startNonBlockingConnect(Connection connection, InetSocketAddress targetAddr) throws IOException {
@@ -265,10 +261,26 @@ public class SocksProxy {
 
     }
 
+    private void clientWriteRaw(Connection connection, ByteBuffer buffer) throws IOException {
+
+        SocketChannel remoteChannel = connection.getRemote();
+        if (!remoteChannel.isConnected()) {
+            throw new IOException("remote channel isn't connected, can't write data");
+        }
+        buffer.flip(); //TODO??????
+        remoteChannel.write(buffer);
+        if (buffer.hasRemaining()) {
+            connection.addToQueue(buffer);
+            SelectionKey key = connection.getClient().keyFor(selector);
+            key.interestOps(key.interestOps() | SelectionKey.OP_WRITE); //клиент хранит очередь на запись для remote
+        }
+
+    }
+
     private void closeConnection(SelectionKey key) throws IOException {
         SocketChannel socketChannel = (SocketChannel) key.channel();
         Connection currentConnection = (Connection) key.attachment();
-        currentConnection.getPending().clear();
+        currentConnection.clearQueue();
         currentConnection.getHandshakeBuffer().clear();
         SocketChannel remote = currentConnection.getRemote();
         if (remote != null) {
@@ -278,19 +290,5 @@ public class SocksProxy {
         key.cancel();
     }
 
-    private void clientWriteRaw(Connection connection, ByteBuffer buffer) throws IOException {
 
-        SocketChannel remoteChannel = connection.getRemote();
-        if (!remoteChannel.isConnected()) {
-            throw new IOException("remote channel isn't connected, can't write data");
-        }
-        buffer.flip();
-        remoteChannel.write(buffer);
-        if (buffer.hasRemaining()) {
-            connection.getPending().add(buffer);
-            SelectionKey remoteKey = remoteChannel.keyFor(selector);
-            remoteKey.interestOps(remoteKey.interestOps() | SelectionKey.OP_WRITE);
-        }
-
-    }
 }
