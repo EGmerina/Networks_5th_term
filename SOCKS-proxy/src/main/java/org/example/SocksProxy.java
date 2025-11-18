@@ -18,24 +18,25 @@ public class SocksProxy {
 
     public SocksProxy() {
         try {
-            selector = Selector.open();
+            selector = Selector.open(); //все-таки вынести в try-catch
         } catch (IOException e) {
             logger.error("can't open selector");
             throw new RuntimeException(e);
         }
-        DatagramChannel dnsChannel = DatagramChannel.open();
-        dnsChannel.configureBlocking(false);
-        dnsChannel.bind(null); // случайный локальный порт
 
-        SelectionKey dnsKey = dnsChannel.register(selector, SelectionKey.OP_READ);
+
     }
 
     public void start(int port) {
         logger.info("SocksProxy started on port {}", port);
-        try (selector; ServerSocketChannel serverSocketChannel = ServerSocketChannel.open()) {
+        try (selector; ServerSocketChannel serverSocketChannel = ServerSocketChannel.open(); DatagramChannel dnsChannel = DatagramChannel.open();) {
             serverSocketChannel.configureBlocking(false);
             serverSocketChannel.bind(new InetSocketAddress(port));
             serverSocketChannel.register(selector, SelectionKey.OP_ACCEPT);
+
+            dnsChannel.configureBlocking(false);
+            dnsChannel.bind(null);
+            dnsChannel.register(selector, SelectionKey.OP_READ);
 
             while (true) {
                 selector.select();
@@ -140,6 +141,7 @@ public class SocksProxy {
                 relayData(currentConnection);
             }
             case RESOLVING_DNS -> {
+                //TODo тут dns должен нетолько читать но и писать
             }
             default -> {
                 logger.error("unknown protocol stage of client {}", socketChannel.getRemoteAddress());
@@ -208,7 +210,7 @@ public class SocksProxy {
                 connection.setStage(ProtocolStage.RESOLVING_DNS);
                 return;
             }
-            case 0x07: {
+            case 0x07: { //tODO пофиксить return
                 return;
             }
             default:
@@ -242,7 +244,6 @@ public class SocksProxy {
 
     private void startNonBlockingConnect(Connection connection, InetSocketAddress targetAddr) throws IOException {
         SocketChannel remote = SocketChannel.open();
-
         remote.configureBlocking(false);
         remote.connect(targetAddr);
         remote.register(selector, SelectionKey.OP_CONNECT, connection);
