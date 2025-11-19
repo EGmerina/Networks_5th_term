@@ -13,7 +13,6 @@ public class Connection { // private static final int MAX_QUEUE_SIZE = 100;
     private SocketChannel client = null;
     private final ArrayDeque<ByteBuffer> pending = new ArrayDeque<>();
     private ProtocolStage stage = ProtocolStage.METHOD;
-    private int remotePort;
 
     public Connection(SocketChannel client) {
         this.client = client;
@@ -63,11 +62,4 @@ public class Connection { // private static final int MAX_QUEUE_SIZE = 100;
         pending.clear();
     }
 
-    public int getRemotePort() {
-        return remotePort;
-    }
-
-    public void setRemotePort(int remotePort) {
-        this.remotePort = remotePort;
-    }
 }
