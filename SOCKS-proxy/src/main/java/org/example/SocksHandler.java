@@ -6,30 +6,64 @@ import org.xbill.DNS.*;
 import org.xbill.DNS.Record;
 
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
-//TODO проблема, у нас только один канал для dns , нельзя хранить ProtocolStage в attachment, поэтому создаем фиктивный connection
 
 public class SocksHandler {
     private static final Logger logger = LogManager.getLogger(SocksHandler.class);
     private static final int DATA_BUFFER_SIZE = 8192;
+    private static final int DNS_PACKET_BUFFER_SIZE = 512;
     private static Selector selector;
-    private DnsResolver dnsResolver = new DnsResolver();
+    private HashMap<Integer, PendingConnection> pendingDns = new HashMap<>();
+    private DatagramChannel dnsChannel;
 
 
-    public SocksHandler(Selector selector) {
+    public SocksHandler(Selector selector, DatagramChannel dnsChannel) {
         this.selector = selector;
+        this.dnsChannel = dnsChannel;
     }
 
 
-    public void handleDnsRead(SelectionKey key) {
-        InetSocketAddress inetSocketAddress = dnsResolver.parseResponse((DatagramChannel) key.channel());
-        //TODO и тут какой-то connect. я уже запуталась
-        startConnect(conn, inetSocketAddress);
+    public void handleDnsRead(SelectionKey key) throws IOException {
+        DatagramChannel dnsChannel = (DatagramChannel) key.channel();
+        ByteBuffer buf = ByteBuffer.allocate(DNS_PACKET_BUFFER_SIZE);
+        SocketAddress addr = dnsChannel.receive(buf);
+        if (addr == null) {
+            return;
+        }
+        buf.flip();
+
+        byte[] arr = new byte[buf.remaining()];
+        buf.get(arr);
+
+        Message response = new Message(arr);
+
+        int dnsId = response.getHeader().getID();
+        PendingConnection pending = pendingDns.remove(dnsId);
+        if (pending == null) {
+            return;
+        }
+
+        Connection connection = pending.connection();
+        int port = pending.port();
+
+        for (Record r : response.getSection(Section.ANSWER)) {
+            if (r.getType() == Type.A) {
+                ARecord arec = (ARecord) r;
+                InetAddress ip = arec.getAddress();
+
+                logger.trace("Resolved: " + ip.getHostAddress());
+                InetSocketAddress inetSocketAddress = new InetSocketAddress(ip, port);
+                startConnect(connection, inetSocketAddress);
+            }
+        }
+
     }
 
     public void handleAccept(SelectionKey key) throws IOException {
@@ -47,9 +81,8 @@ public class SocksHandler {
 
     }
 
-    //TODO в итоге буду малодушно не отвечать клиенту если какая-то ошибка
 
-    public void handleConnect(SelectionKey key) throws IOException {
+    public void handleConnect(SelectionKey key) throws IOException {//TODO в итоге буду малодушно не отвечать клиенту если какая-то ошибка
         SocketChannel remote = (SocketChannel) key.channel();
         Connection connection = (Connection) key.attachment();
 
@@ -73,7 +106,6 @@ public class SocksHandler {
     }
 
     public void handleWrite(SelectionKey key) throws IOException {
-        SocketChannel socketChannel = (SocketChannel) key.channel();
         Connection currentConnection = (Connection) key.attachment();
         ByteBuffer buffer = currentConnection.getFromQueue(key);
         currentConnection.getRemote().write(buffer);
@@ -98,7 +130,7 @@ public class SocksHandler {
                 relayData(currentConnection);
             }
             case RESOLVING_DNS -> {
-                resolveDnsRequest(currentConnection);//TODO??????????????????????????????????????
+                return;
             }
             default -> {
                 logger.error("unknown protocol stage of client {}", socketChannel.getRemoteAddress());
@@ -128,7 +160,7 @@ public class SocksHandler {
     }
 
 
-    private void connectToRemote(Connection connection) throws IOException {
+    private void connectToRemote(Connection connection) throws IOException { //TODO в целом функцию пофиксить
         ByteBuffer buf = connection.getHandshakeBuffer();
 
         byte atyp = ProtocolExecutor.getAType(buf);
@@ -165,7 +197,7 @@ public class SocksHandler {
 
                 buf.clear();
                 sendDnsRequest(connection, domain, port);
-                connection.setStage(ProtocolStage.RESOLVING_DNS);//TODO это тупо!!!!!!!! это нужно делать у dns резолвера
+                connection.setStage(ProtocolStage.RESOLVING_DNS);//просто чтобы ключ висел и не делал лишнего
                 return;
             }
             case 0x07: { //tODO пофиксить return
@@ -193,11 +225,6 @@ public class SocksHandler {
 
     }
 
-    private void resolveDnsRequest(Connection currentConnection) {
-
-        // теперь делаем неблокирующий connect
-
-    }
 
     private void clientWriteRaw(Connection connection, ByteBuffer buffer) throws IOException {
 
@@ -222,5 +249,22 @@ public class SocksHandler {
         remote.register(selector, SelectionKey.OP_CONNECT, connection);
     }
 
+
+    private void sendDnsRequest(Connection connection, String domain, int port) throws IOException {
+        List<InetSocketAddress> dnsServers = ResolverConfig.getCurrentConfig().servers();
+        InetSocketAddress server = dnsServers.get(0);
+        Name qname = null;
+        try {
+            qname = Name.fromString(domain, Name.fromString("."));
+        } catch (TextParseException e) {
+            logger.error("can't parse dns name");
+            throw new RuntimeException(e);
+        }
+        org.xbill.DNS.Record question = Record.newRecord(qname, Type.A, DClass.IN);
+        Message query = Message.newQuery(question);
+        byte[] raw = query.toWire();
+        pendingDns.put(query.getHeader().getID(), new PendingConnection(connection, port));
+        dnsChannel.send(ByteBuffer.wrap(raw), server);
+    }
 
 }

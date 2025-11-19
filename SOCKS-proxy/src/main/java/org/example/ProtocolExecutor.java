@@ -6,7 +6,7 @@ import java.nio.ByteBuffer;
 
 public class ProtocolExecutor {
 
-    public static boolean checkMethod(ByteBuffer buffer) throws IOException {
+    public static boolean checkMethod(ByteBuffer buffer) throws IOException { //TODO тут тоже покрасивее сделать
         if (buffer.remaining() < 2) return false;
         buffer.mark();
         byte ver = buffer.get();

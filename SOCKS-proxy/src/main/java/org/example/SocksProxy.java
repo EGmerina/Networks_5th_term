@@ -36,7 +36,7 @@ public class SocksProxy {
             dnsChannel.bind(null);
             dnsChannel.register(selector, SelectionKey.OP_READ);
 
-            SocksHandler socksHandler = new SocksHandler(selector);
+            SocksHandler socksHandler = new SocksHandler(selector, dnsChannel);
 
             while (true) {
                 selector.select();
