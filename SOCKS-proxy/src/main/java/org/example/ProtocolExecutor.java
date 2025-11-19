@@ -1,12 +1,18 @@
 package org.example;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 
 public class ProtocolExecutor {
+    private static final Logger logger = LogManager.getLogger(ProtocolExecutor.class);
 
     public static boolean checkMethod(ByteBuffer buffer) throws IOException { //TODO тут тоже покрасивее сделать
+        logger.trace("checking method....");
+
         if (buffer.remaining() < 2) return false;
         buffer.mark();
         byte ver = buffer.get();
@@ -15,19 +21,28 @@ public class ProtocolExecutor {
             buffer.reset();
             return false;
         }
+
         boolean noauth = false;
         for (int i = 0; i < methodsNum; i++) {
             byte m = buffer.get();
             if (m == 0x00) noauth = true;
         }
-        if (ver != 0x05 || !noauth) {
-            throw new IOException("version socks isn't 5 or unsupported connection");
+        //logger.trace("message from client {}, arr {}", buffer, buffer.array());
+        if (ver != 0x05) {
+            logger.trace("version socks isn't 5 ");
+            throw new IOException("version socks isn't 5 ");
+        } else if (!noauth) {
+            logger.trace(" unsupported connection");
+            throw new IOException(" unsupported connection");
         }
         return true;
     }
 
     public static byte getAType(ByteBuffer buffer) throws IOException {
-        if (buffer.remaining() < 4) return 0x07;
+        if (buffer.remaining() < 4) {
+            logger.trace("wait data...");
+            return 0x07;
+        }
 
         buffer.mark();
         byte ver = buffer.get();

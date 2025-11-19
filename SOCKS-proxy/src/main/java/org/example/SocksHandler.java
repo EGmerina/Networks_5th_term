@@ -23,6 +23,7 @@ public class SocksHandler {
     private HashMap<Integer, PendingConnection> pendingDns = new HashMap<>();
     private DatagramChannel dnsChannel;
 
+    private static enum Destination {TO_CLIENT, TO_REMOTE}
 
     public SocksHandler(Selector selector, DatagramChannel dnsChannel) {
         this.selector = selector;
@@ -31,6 +32,7 @@ public class SocksHandler {
 
 
     public void handleDnsRead(SelectionKey key) throws IOException {
+        logger.trace("handle Dns Read");
         DatagramChannel dnsChannel = (DatagramChannel) key.channel();
         ByteBuffer buf = ByteBuffer.allocate(DNS_PACKET_BUFFER_SIZE);
         SocketAddress addr = dnsChannel.receive(buf);
@@ -67,6 +69,7 @@ public class SocksHandler {
     }
 
     public void handleAccept(SelectionKey key) throws IOException {
+        logger.trace("handle accept");
         ServerSocketChannel channel = (ServerSocketChannel) key.channel();
         try {
             SocketChannel clientSocket = channel.accept();
@@ -83,6 +86,7 @@ public class SocksHandler {
 
 
     public void handleConnect(SelectionKey key) throws IOException {//TODO в итоге буду малодушно не отвечать клиенту если какая-то ошибка
+        logger.trace("handle connect");
         SocketChannel remote = (SocketChannel) key.channel();
         Connection connection = (Connection) key.attachment();
 
@@ -91,6 +95,19 @@ public class SocksHandler {
         }
 
         if (remote.finishConnect()) {
+//
+//            // === MUST send SOCKS5 CONNECT reply ===
+//            ByteBuffer reply = ByteBuffer.allocate(10);
+//            reply.put((byte) 0x05); // VER
+//            reply.put((byte) 0x00); // REP = succeeded
+//            reply.put((byte) 0x00); // RSV
+//            reply.put((byte) 0x01); // ATYP = IPv4
+//            reply.putInt(0);        // BND.ADDR = 0.0.0.0
+//            reply.putShort((short) 0); // BND.PORT = 0
+//            reply.flip();
+//
+//            connection.getClient().write(reply);//&&&&&&&&&&&&&&&&&&&&&?????????????????????
+
             Connection newConnection = new Connection(remote);
             newConnection.setRemote(connection.getClient());
 
@@ -106,6 +123,7 @@ public class SocksHandler {
     }
 
     public void handleWrite(SelectionKey key) throws IOException {
+        logger.trace("handle write");
         Connection currentConnection = (Connection) key.attachment();
         ByteBuffer buffer = currentConnection.getFromQueue(key);
         currentConnection.getRemote().write(buffer);
@@ -119,6 +137,7 @@ public class SocksHandler {
         SocketChannel socketChannel = (SocketChannel) key.channel();
         Connection currentConnection = (Connection) key.attachment();
         ProtocolStage stage = currentConnection.getStage();
+        logger.trace("handle read, protocol stage : {}", stage);
         switch (stage) {
             case METHOD -> {
                 sendMethodToClient(currentConnection);
@@ -142,77 +161,127 @@ public class SocksHandler {
 
 
     private void sendMethodToClient(Connection connection) throws IOException {
-        ByteBuffer buffer = connection.getHandshakeBuffer();
 
+        ByteBuffer buffer = connection.getHandshakeBuffer();
+        SocketChannel channel = connection.getClient();
+        channel.read(buffer);
+        buffer.flip();
         boolean ok = false;
         try {
             ok = ProtocolExecutor.checkMethod(buffer);
+            logger.trace("send method : method is {}", ok);
         } catch (IOException e) {
-            clientWriteRaw(connection, ByteBuffer.wrap(new byte[]{0x05, (byte) 0xff}));
+            clientWriteRaw(connection, ByteBuffer.wrap(new byte[]{0x05, (byte) 0xff}), Destination.TO_CLIENT);
             throw e;
         }
         if (!ok) {
+            logger.trace(" wait data");
             return;//wait
         }
         buffer.clear();
-        clientWriteRaw(connection, ByteBuffer.wrap(new byte[]{0x05, 0x00}));
+        clientWriteRaw(connection, ByteBuffer.wrap(new byte[]{0x05, 0x00}), Destination.TO_CLIENT);
         connection.setStage(ProtocolStage.CONNECTING);
     }
 
 
-    private void connectToRemote(Connection connection) throws IOException { //TODO в целом функцию пофиксить
+    private void connectToRemote(Connection connection) throws IOException { //TODO разобраться
+        logger.trace("connecting to remote...");
+
+        SocketChannel channel = connection.getClient();
         ByteBuffer buf = connection.getHandshakeBuffer();
 
-        byte atyp = ProtocolExecutor.getAType(buf);
+        int read = channel.read(buf);
+        if (read == -1) throw new IOException("client closed");
+
+        buf.flip();       // switch into reading mode
+        buf.mark();       // we will restore if data is incomplete
+
+        // ----------- STEP 1: Read header ----------- //
+        if (buf.remaining() < 4) {
+            buf.reset();
+            buf.compact();
+            return;
+        }
+
+        byte ver = buf.get();
+        byte cmd = buf.get();
+        byte rsv = buf.get();
+        byte atyp = buf.get();
+
+        if (ver != 0x05) throw new IOException("invalid SOCKS version");
+        if (cmd != 0x01) throw new IOException("only CONNECT supported");
 
         InetSocketAddress targetAddr = null;
 
+        // ----------- STEP 2: Parse address type ----------- //
         switch (atyp) {
-            case 0x01: { // IPv4
+            case 0x01: // IPv4
+            {
                 if (buf.remaining() < 4 + 2) {
                     buf.reset();
+                    buf.compact();
                     return;
                 }
-                targetAddr = ProtocolExecutor.getInetSocketAddress(buf);
+
+                byte[] ip4 = new byte[4];
+                buf.get(ip4);
+                int port = (buf.get() & 0xFF) << 8 | (buf.get() & 0xFF);
+
+                String ipStr =
+                        (ip4[0] & 0xff) + "." +
+                                (ip4[1] & 0xff) + "." +
+                                (ip4[2] & 0xff) + "." +
+                                (ip4[3] & 0xff);
+
+                targetAddr = new InetSocketAddress(ipStr, port);
             }
             break;
 
-            case 0x03: { // DOMAIN
+            case 0x03: // DOMAIN
+            {
                 if (buf.remaining() < 1) {
                     buf.reset();
+                    buf.compact();
                     return;
                 }
+
                 int len = buf.get() & 0xff;
 
                 if (buf.remaining() < len + 2) {
                     buf.reset();
+                    buf.compact();
                     return;
                 }
 
                 byte[] dom = new byte[len];
                 buf.get(dom);
-
                 String domain = new String(dom, StandardCharsets.US_ASCII);
+
                 int port = (buf.get() & 0xFF) << 8 | (buf.get() & 0xFF);
+
+                logger.trace("Need DNS resolve: {}:{}", domain, port);
 
                 buf.clear();
                 sendDnsRequest(connection, domain, port);
-                connection.setStage(ProtocolStage.RESOLVING_DNS);//просто чтобы ключ висел и не делал лишнего
+                connection.setStage(ProtocolStage.RESOLVING_DNS);
                 return;
             }
-            case 0x07: { //tODO пофиксить return
-                return;
-            }
+
+            case 0x04: // IPv6
+                throw new IOException("IPv6 not supported");
+
             default:
-                throw new IOException("unsupported address type");
+                throw new IOException("unknown ATYP: " + atyp);
         }
 
+        // ----------- STEP 3: Start connecting ----------- //
         buf.clear();
         startConnect(connection, targetAddr);
     }
 
 
     private void relayData(Connection currentConnection) throws IOException {
+        logger.trace("relay data");
         SocketChannel socketChannel = currentConnection.getClient();
         ByteBuffer buffer = ByteBuffer.allocate(DATA_BUFFER_SIZE);
         int bytesNum = socketChannel.read(buffer);
@@ -221,19 +290,27 @@ public class SocksHandler {
         } else if (bytesNum == 0) {
             return;
         }
-        clientWriteRaw(currentConnection, buffer);
+        clientWriteRaw(currentConnection, buffer, Destination.TO_REMOTE);
 
     }
 
 
-    private void clientWriteRaw(Connection connection, ByteBuffer buffer) throws IOException {
-
-        SocketChannel remoteChannel = connection.getRemote();
-        if (!remoteChannel.isConnected()) {
-            throw new IOException("remote channel isn't connected, can't write data");
+    private void clientWriteRaw(Connection connection, ByteBuffer buffer, Destination destination) throws IOException {
+        SocketChannel channel = null;
+        switch (destination) {
+            case TO_CLIENT -> {
+                channel = connection.getClient();
+            }
+            case TO_REMOTE -> {
+                channel = connection.getRemote();
+                if (!channel.isConnected()) {
+                    throw new IOException("remote channel isn't connected, can't write data");
+                }
+            }
         }
+
         buffer.flip();
-        remoteChannel.write(buffer);
+        channel.write(buffer);
         if (buffer.hasRemaining()) {
             connection.addToQueue(buffer);
             SelectionKey key = connection.getClient().keyFor(selector);

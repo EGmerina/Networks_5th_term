@@ -5,7 +5,7 @@ import java.io.IOException;
 public class Main {
     public static void main(String[] args) {
 
-        if(args.length!=1){
+        if (args.length != 1) {
             System.out.println("Usage : <server_port>");
             return;
         }
@@ -20,3 +20,4 @@ public class Main {
         socksProxy.start(port);
     }
 }
+//java -jar target/SOCKS-proxy-1.0-SNAPSHOT.jar 8888

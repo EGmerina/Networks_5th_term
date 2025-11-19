@@ -73,7 +73,7 @@ public class SocksProxy {
             }
 
         } catch (Exception e) {
-            logger.error("exception during working server: " + e.getMessage() + " and suppressed:" + e.getSuppressed());
+            logger.error("exception during working server: " + e.getMessage() + " ,  suppressed exceptions:" + e.getSuppressed());
             throw new RuntimeException(e);
         } finally {
             closeAllChannels(selector);
