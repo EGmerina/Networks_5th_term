@@ -56,19 +56,25 @@ public class ProtocolExecutor {
             return false;
         }
 
-        boolean noauth = false;
-        for (int i = 0; i < methodsNum; i++) {
-            byte m = buffer.get();
-            if (m == 0x00) noauth = true;
-        }
+//        boolean noauth = false;
+//        byte m = buffer.get();
+//        if (m == 0x00) {
+//            noauth = true;
+//        }
+        buffer.clear();
+//        for (int i = 0; i < methodsNum; i++) {
+//            byte m = buffer.get();
+//            if (m == 0x00) noauth = true;
+//        }
         //logger.trace("message from client {}, arr {}", buffer, buffer.array());
         if (ver != 0x05) {
             logger.trace("version socks isn't 5 ");
             throw new IOException("version socks isn't 5 ");
-        } else if (!noauth) {
-            logger.trace(" unsupported connection");
-            throw new IOException(" unsupported connection");
         }
+//        } else if (!noauth) {
+//            logger.trace(" unsupported connection");
+//            throw new IOException(" unsupported connection");
+//        }
         return true;
     }
 

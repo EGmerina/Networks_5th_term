@@ -16,7 +16,6 @@ import java.util.HashMap;
 import java.util.List;
 
 
-
 public class SocksHandler {
     private static final Logger logger = LogManager.getLogger(SocksHandler.class);
     private static final int DATA_BUFFER_SIZE = 8192;
@@ -83,7 +82,6 @@ public class SocksHandler {
             logger.error("can't accept socketChannel ");
             throw e;
         }
-
     }
 
 
@@ -98,7 +96,7 @@ public class SocksHandler {
 
         if (remote.finishConnect()) {
 
-            //sendServerResponsePacket(connection);
+            sendServerResponsePacket(connection);
 
             Connection newConnection = new Connection(remote);
             newConnection.setRemote(connection.getClient());
@@ -148,6 +146,7 @@ public class SocksHandler {
             }
 
         }
+        logger.trace("handle read finished");
 
     }
 
@@ -170,9 +169,10 @@ public class SocksHandler {
             logger.trace(" wait data");
             return;//wait
         }
-        buffer.clear();
+        //buffer.compact();
         clientWriteRaw(connection, ProtocolExecutor.getOkMethodMessage(), Destination.TO_CLIENT);
         connection.setStage(ProtocolStage.CONNECTING);
+        //connectToRemote(connection);
     }
 
 
@@ -187,7 +187,11 @@ public class SocksHandler {
         if (read == -1) {
             logger.error("can't read from channel => client {} closed", channel.getRemoteAddress());
             throw new IOException("client closed");
+        } else if (read == 0 && buf.position() == 0) {
+            logger.trace("wait data to connect, read = 0");
+            return;
         }
+        logger.trace("!!!!!!!!!!!!!!!!!get some data!!!!!!!!!!!!!!!!!!!!!!");
 
         buf.flip();
 
@@ -200,9 +204,9 @@ public class SocksHandler {
                     logger.trace("wait ipv4");
                     return;
                 }
+                startConnect(connection, targetAddr);
+                break;
             }
-            break;
-
             case 0x03: {
                 String domain = ProtocolExecutor.getDomain(buf);
                 if (domain == null) {
@@ -214,17 +218,16 @@ public class SocksHandler {
 
                 logger.trace("Need DNS resolve: {}:{}", domain, port);
 
-                buf.clear();
-                sendServerResponsePacket(connection);
                 sendDnsRequest(connection, domain, port);
                 connection.setStage(ProtocolStage.RESOLVING_DNS);
-                return;
+                break;
             }
 
             case 0x04:
                 throw new IOException("IPv6 not supported");
 
             case null:
+                logger.trace("wait data to connect");
                 return;
 
             default:
@@ -232,8 +235,7 @@ public class SocksHandler {
         }
 
         buf.clear();
-        sendServerResponsePacket(connection);
-        startConnect(connection, targetAddr);
+
     }
 
 
@@ -276,7 +278,7 @@ public class SocksHandler {
             SelectionKey key = connection.getClient().keyFor(selector);
             key.interestOps(key.interestOps() | SelectionKey.OP_WRITE); //клиент хранит очередь на запись для remote
         }
-
+        logger.trace("data was written");
     }
 
     private void startConnect(Connection connection, InetSocketAddress targetAddr) throws IOException {

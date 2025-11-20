@@ -41,13 +41,14 @@ public class SocksProxy {
             while (true) {
                 selector.select();
                 Set<SelectionKey> selectedKeys = selector.selectedKeys();
+                logger.trace("---------keys were selected------------");
                 Iterator<SelectionKey> iterator = selectedKeys.iterator();
 
                 while (iterator.hasNext()) {
                     SelectionKey key = iterator.next();
                     iterator.remove();
                     if (!key.isValid()) {
-                        iterator.remove();
+                        // iterator.remove();
                         continue;
                     }
                     try {
