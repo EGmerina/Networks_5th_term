@@ -82,7 +82,7 @@ public class SocksProxy {
         connection.clientChannel = clientChannel;
         connection.state = State.WAIT_AUTH;
         clientChannel.register(selector, SelectionKey.OP_READ, connection);
-        logger.info("client {} was accepted", clientChannel.getRemoteAddress());
+        logger.trace("client {} was accepted", clientChannel.getRemoteAddress());
     }
 
     private void read(SelectionKey key) throws IOException {
@@ -130,10 +130,8 @@ public class SocksProxy {
             throw new IOException("Only SOCKS5 supported");
         }
 
-        // Пропускаем методы, нам все равно, мы берем NO AUTH (0x00)
         buf.clear();
 
-        // Отвечаем: VER(0x05) METHOD(0x00 - No Auth)
         ByteBuffer response = ByteBuffer.wrap(new byte[]{0x05, 0x00});
         client.write(response);
 
@@ -149,7 +147,6 @@ public class SocksProxy {
         int read = client.read(buf);
         if (read == -1) throw new IOException("Client closed connection");
 
-        // Парсим запрос. Минимум: VER CMD RSV ATYP (4 байта)
         if (buf.position() < 4) return;
 
         buf.flip();
@@ -165,7 +162,7 @@ public class SocksProxy {
         if (atyp == 0x01) { // IPv4
             if (buf.remaining() < 4 + 2) { // IP(4) + Port(2)
                 buf.position(buf.limit());
-                buf.limit(buf.capacity()); // rollback buffer
+                buf.limit(buf.capacity());
                 return;
             }
             byte[] ipBytes = new byte[4];
@@ -176,14 +173,14 @@ public class SocksProxy {
             initiateConnect(att, targetIp, targetPort);
 
         } else if (atyp == 0x03) { // Domain name
-            if (buf.remaining() < 1) { // Ждем длину домена
+            if (buf.remaining() < 1) {
                 buf.position(buf.limit());
                 buf.limit(buf.capacity());
                 return;
             }
             buf.mark();
             int len = Byte.toUnsignedInt(buf.get());
-            if (buf.remaining() < len + 2) { // Domain(len) + Port(2)
+            if (buf.remaining() < len + 2) {
                 buf.reset();
                 buf.position(buf.limit());
                 buf.limit(buf.capacity());
@@ -194,14 +191,13 @@ public class SocksProxy {
             String domain = new String(domainBytes);
             targetPort = Short.toUnsignedInt(buf.getShort());
 
-            // Старт асинхронного резолвинга
             resolveDomain(att, domain, targetPort);
 
         } else {
             throw new IOException("Unsupported Address Type: " + atyp);
         }
 
-        buf.clear(); // Очищаем буфер для будущих данных
+        buf.clear();
     }
 
     private void resolveDomain(Connection att, String domain, int port) throws IOException {
@@ -236,31 +232,29 @@ public class SocksProxy {
         if (dnsChannel.read(buf) <= 0) return;
         buf.flip();
 
-        try {
-            Message response = new Message(buf.array());
-            int id = response.getHeader().getID();
 
-            Connection att = dnsPending.remove(id);
-            if (att == null) return; // Не наш запрос или тайм-аут
+        Message response = new Message(buf.array());
+        int id = response.getHeader().getID();
 
-            // Ищем A запись
-            Record[] answers = response.getSectionArray(Section.ANSWER);
-            InetAddress ip = null;
-            for (Record r : answers) {
-                if (r instanceof ARecord) {
-                    ip = ((ARecord) r).getAddress();
-                    break;
-                }
+        Connection att = dnsPending.remove(id);
+        if (att == null) return; // Не наш запрос или тайм-аут
+
+        // Ищем A запись
+        Record[] answers = response.getSectionArray(Section.ANSWER);
+        InetAddress ip = null;
+        for (Record r : answers) {
+            if (r instanceof ARecord) {
+                ip = ((ARecord) r).getAddress();
+                break;
             }
-
-            if (ip != null) {
-                initiateConnect(att, ip, att.destinationPort);
-            } else {
-                closeSession(att.clientKey());
-            }
-        } catch (Exception e) {
-            // Ошибка парсинга
         }
+
+        if (ip != null) {
+            initiateConnect(att, ip, att.destinationPort);
+        } else {
+            closeSession(att.clientKey());
+        }
+
     }
 
     private void initiateConnect(Connection att, InetAddress ip, int port) throws IOException {
