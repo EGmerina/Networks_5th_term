@@ -15,6 +15,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 
+
+
 public class SocksHandler {
     private static final Logger logger = LogManager.getLogger(SocksHandler.class);
     private static final int DATA_BUFFER_SIZE = 8192;
@@ -95,18 +97,8 @@ public class SocksHandler {
         }
 
         if (remote.finishConnect()) {
-//
-//            // === MUST send SOCKS5 CONNECT reply ===
-//            ByteBuffer reply = ByteBuffer.allocate(10);
-//            reply.put((byte) 0x05); // VER
-//            reply.put((byte) 0x00); // REP = succeeded
-//            reply.put((byte) 0x00); // RSV
-//            reply.put((byte) 0x01); // ATYP = IPv4
-//            reply.putInt(0);        // BND.ADDR = 0.0.0.0
-//            reply.putShort((short) 0); // BND.PORT = 0
-//            reply.flip();
-//
-//            connection.getClient().write(reply);//&&&&&&&&&&&&&&&&&&&&&?????????????????????
+
+            //sendServerResponsePacket(connection);
 
             Connection newConnection = new Connection(remote);
             newConnection.setRemote(connection.getClient());
@@ -171,7 +163,7 @@ public class SocksHandler {
             ok = ProtocolExecutor.checkMethod(buffer);
             logger.trace("send method : method is {}", ok);
         } catch (IOException e) {
-            clientWriteRaw(connection, ByteBuffer.wrap(new byte[]{0x05, (byte) 0xff}), Destination.TO_CLIENT);
+            clientWriteRaw(connection, ProtocolExecutor.getNotOkMethodMessage(), Destination.TO_CLIENT);
             throw e;
         }
         if (!ok) {
@@ -179,7 +171,7 @@ public class SocksHandler {
             return;//wait
         }
         buffer.clear();
-        clientWriteRaw(connection, ByteBuffer.wrap(new byte[]{0x05, 0x00}), Destination.TO_CLIENT);
+        clientWriteRaw(connection, ProtocolExecutor.getOkMethodMessage(), Destination.TO_CLIENT);
         connection.setStage(ProtocolStage.CONNECTING);
     }
 
@@ -190,92 +182,57 @@ public class SocksHandler {
         SocketChannel channel = connection.getClient();
         ByteBuffer buf = connection.getHandshakeBuffer();
 
+
         int read = channel.read(buf);
-        if (read == -1) throw new IOException("client closed");
-
-        buf.flip();       // switch into reading mode
-        buf.mark();       // we will restore if data is incomplete
-
-        // ----------- STEP 1: Read header ----------- //
-        if (buf.remaining() < 4) {
-            buf.reset();
-            buf.compact();
-            return;
+        if (read == -1) {
+            logger.error("can't read from channel => client {} closed", channel.getRemoteAddress());
+            throw new IOException("client closed");
         }
 
-        byte ver = buf.get();
-        byte cmd = buf.get();
-        byte rsv = buf.get();
-        byte atyp = buf.get();
+        buf.flip();
 
-        if (ver != 0x05) throw new IOException("invalid SOCKS version");
-        if (cmd != 0x01) throw new IOException("only CONNECT supported");
-
+        Byte atyp = ProtocolExecutor.getAType(buf);
         InetSocketAddress targetAddr = null;
-
-        // ----------- STEP 2: Parse address type ----------- //
         switch (atyp) {
-            case 0x01: // IPv4
-            {
-                if (buf.remaining() < 4 + 2) {
-                    buf.reset();
-                    buf.compact();
+            case 0x01: {
+                targetAddr = ProtocolExecutor.getInetSocketAddress(buf);
+                if (targetAddr == null) {
+                    logger.trace("wait ipv4");
                     return;
                 }
-
-                byte[] ip4 = new byte[4];
-                buf.get(ip4);
-                int port = (buf.get() & 0xFF) << 8 | (buf.get() & 0xFF);
-
-                String ipStr =
-                        (ip4[0] & 0xff) + "." +
-                                (ip4[1] & 0xff) + "." +
-                                (ip4[2] & 0xff) + "." +
-                                (ip4[3] & 0xff);
-
-                targetAddr = new InetSocketAddress(ipStr, port);
             }
             break;
 
-            case 0x03: // DOMAIN
-            {
-                if (buf.remaining() < 1) {
-                    buf.reset();
-                    buf.compact();
+            case 0x03: {
+                String domain = ProtocolExecutor.getDomain(buf);
+                if (domain == null) {
+                    logger.trace("wait domain");
                     return;
                 }
 
-                int len = buf.get() & 0xff;
-
-                if (buf.remaining() < len + 2) {
-                    buf.reset();
-                    buf.compact();
-                    return;
-                }
-
-                byte[] dom = new byte[len];
-                buf.get(dom);
-                String domain = new String(dom, StandardCharsets.US_ASCII);
-
-                int port = (buf.get() & 0xFF) << 8 | (buf.get() & 0xFF);
+                int port = ProtocolExecutor.getPort(buf);
 
                 logger.trace("Need DNS resolve: {}:{}", domain, port);
 
                 buf.clear();
+                sendServerResponsePacket(connection);
                 sendDnsRequest(connection, domain, port);
                 connection.setStage(ProtocolStage.RESOLVING_DNS);
                 return;
             }
 
-            case 0x04: // IPv6
+            case 0x04:
                 throw new IOException("IPv6 not supported");
+
+            case null:
+                return;
 
             default:
                 throw new IOException("unknown ATYP: " + atyp);
         }
 
-        // ----------- STEP 3: Start connecting ----------- //
         buf.clear();
+        sendServerResponsePacket(connection);
         startConnect(connection, targetAddr);
     }
 
@@ -296,6 +253,7 @@ public class SocksHandler {
 
 
     private void clientWriteRaw(Connection connection, ByteBuffer buffer, Destination destination) throws IOException {
+        logger.trace("write raw data {}", destination);
         SocketChannel channel = null;
         switch (destination) {
             case TO_CLIENT -> {
@@ -304,6 +262,7 @@ public class SocksHandler {
             case TO_REMOTE -> {
                 channel = connection.getRemote();
                 if (!channel.isConnected()) {
+                    logger.error("remote channel isn't connected, can't write data");
                     throw new IOException("remote channel isn't connected, can't write data");
                 }
             }
@@ -312,6 +271,7 @@ public class SocksHandler {
         buffer.flip();
         channel.write(buffer);
         if (buffer.hasRemaining()) {
+            logger.trace("add data to queue");
             connection.addToQueue(buffer);
             SelectionKey key = connection.getClient().keyFor(selector);
             key.interestOps(key.interestOps() | SelectionKey.OP_WRITE); //клиент хранит очередь на запись для remote
@@ -328,6 +288,7 @@ public class SocksHandler {
 
 
     private void sendDnsRequest(Connection connection, String domain, int port) throws IOException {
+        logger.trace("send DNS request : domain {}, port {}", domain, port);
         List<InetSocketAddress> dnsServers = ResolverConfig.getCurrentConfig().servers();
         InetSocketAddress server = dnsServers.get(0);
         Name qname = null;
@@ -342,6 +303,11 @@ public class SocksHandler {
         byte[] raw = query.toWire();
         pendingDns.put(query.getHeader().getID(), new PendingConnection(connection, port));
         dnsChannel.send(ByteBuffer.wrap(raw), server);
+    }
+
+    private void sendServerResponsePacket(Connection connection) throws IOException {
+        logger.trace("send response to client");
+        clientWriteRaw(connection, ProtocolExecutor.getResponsePacket(), Destination.TO_CLIENT);
     }
 
 }
