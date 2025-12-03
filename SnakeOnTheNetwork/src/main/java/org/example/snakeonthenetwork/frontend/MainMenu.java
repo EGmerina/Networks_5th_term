@@ -8,6 +8,8 @@ import javafx.scene.Parent;
 import java.io.IOException;
 
 public class MainMenu extends FXGLMenu {
+
+
     public MainMenu() {
         super(MenuType.MAIN_MENU);
 
