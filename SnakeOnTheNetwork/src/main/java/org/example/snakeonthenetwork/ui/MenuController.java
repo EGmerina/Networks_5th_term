@@ -14,9 +14,9 @@ public class MenuController {
     private Label statusLabel;
 
     // Ссылка на главный контроллер приложения, чтобы вызывать сетевые методы
-    private SnakesApp app;
+    private SnakeApp app;
 
-    public void setApp(SnakesApp app) {
+    public void setApp(SnakeApp app) {
         this.app = app;
     }
 

@@ -19,28 +19,27 @@ public class GameController {
     @FXML
     private BorderPane rootPane;
 
-    private SnakesApp app;
+    private SnakeApp app;
     private static final int CELL_SIZE = 20; // Размер одной клетки в пикселях
 
-    public void setApp(SnakesApp app) {
+    public void setApp(SnakeApp app) {
         this.app = app;
-        // Фокус нужен, чтобы ловить нажатия клавиш
         rootPane.requestFocus();
     }
 
-    @FXML
-    public void handleKeyPressed(KeyEvent event) {
-        if (app != null) {
-            switch (event.getCode()) {
-                case W, UP -> app.sendSteerMessage(Direction.UP);
-                case S, DOWN -> app.sendSteerMessage(Direction.DOWN);
-                case A, LEFT -> app.sendSteerMessage(Direction.LEFT);
-                case D, RIGHT -> app.sendSteerMessage(Direction.RIGHT);
-            }
-        }
-    }
+//    @FXML
+//    public void handleKeyPressed(KeyEvent event) {
+//        if (app != null) {
+//            switch (event.getCode()) {
+//                case W, UP -> app.sendSteerMessage(Direction.UP);
+//                case S, DOWN -> app.sendSteerMessage(Direction.DOWN);
+//                case A, LEFT -> app.sendSteerMessage(Direction.LEFT);
+//                case D, RIGHT -> app.sendSteerMessage(Direction.RIGHT);
+//            }
+//        }
+//    }
 
-    // Этот метод вызывается из сетевого потока, когда пришел StateMsg
+
     public void updateGameState(GameState state) {
         Platform.runLater(() -> draw(state));
     }

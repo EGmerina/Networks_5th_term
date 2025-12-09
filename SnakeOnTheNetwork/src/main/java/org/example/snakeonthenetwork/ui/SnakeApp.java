@@ -9,10 +9,15 @@ import javafx.stage.Stage;
 import java.io.IOException;
 
 public class SnakeApp extends Application {
+    private Stage primaryStage;
+    private GameController gameController; // Ссылка, чтобы передавать туда сообщения из сети
+    private MenuController menuController;
+
     @Override
     public void start(Stage stage) throws IOException {
+        this.primaryStage = stage;
         stage.setTitle("Net Snakes");
-        stage.show();
+        showMenu();
     }
 
     public void showMenu() {
@@ -21,11 +26,15 @@ public class SnakeApp extends Application {
             Parent root = loader.load();
 
             MenuController controller = loader.getController();
-            controller.setApp(this); // Даем контроллеру доступ к главным методам
+            controller.setApp(this);
+            this.menuController = controller;
+            this.gameController = null;
 
             primaryStage.setScene(new Scene(root));
             primaryStage.show();
-        } catch (IOException e) { e.printStackTrace(); }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     public void showGame() {
@@ -35,13 +44,26 @@ public class SnakeApp extends Application {
 
             GameController controller = loader.getController();
             controller.setApp(this);
-
-            // Сохраняем ссылку на controller, чтобы передавать ему обновления стейта
-            this.currentGameController = controller;
+            this.gameController = controller;
+            this.menuController = null;
 
             primaryStage.setScene(new Scene(root));
-            root.requestFocus(); // Важно для клавиатуры!
             primaryStage.show();
-        } catch (IOException e) { e.printStackTrace(); }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public int getMyId() {
+        return 1; //TODO write getMyId()
+    }
+
+    public void startNewGame() {
+    }
+
+    public void joinGame(String selected) {
+    }
+
+    public void stopGame() {
     }
 }
