@@ -30,6 +30,7 @@ public class GameController {
     public void setApp(SnakeApp app) {
         this.app = app;
         rootPane.requestFocus();
+        gameCanvas.setApp(app);
     }
 
     public void setConfig(GameConfig config) {
