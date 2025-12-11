@@ -46,12 +46,12 @@ public class MainController {
         this.masterId = 1;
         this.gameName = gameName;
 
-        this.engine = new GameEngine(config);
+        this.engine = new GameEngine(config, gameName);
 
-        this.gameState = engine.createInitialState(config, gameName);
+        this.gameState = engine.createInitialState();
 
         startGameLoop();
-        app.showGame(config, name);
+        app.showGame(config, gameName);
         app.updateGameState(gameState);
     }
 
@@ -64,7 +64,7 @@ public class MainController {
                 this.gameState = newState;
 
                 // ВАЖНО: Обновляем UI в потоке JavaFX
-                Platform.runLater(() -> app.handleGameState(newState));
+             //   Platform.runLater(() -> app.handleGameState(newState));
             }
         }
 
@@ -115,7 +115,7 @@ public class MainController {
                 network.broadcastState(nextState);
 
                 // 4. Себе тоже рисуем
-                Platform.runLater(() -> app.handleGameState(nextState));
+                //Platform.runLater(() -> app.handleGameState(nextState));
 
                 // 5. Раз в секунду шлем Announcement (чтобы нас видели в лобби)
                 network.sendAnnouncement(nextState, gameConfig);

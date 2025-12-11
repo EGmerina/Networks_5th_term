@@ -4,11 +4,12 @@ import javafx.application.Platform;
 import javafx.fxml.FXML;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
+import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.paint.Color;
-import me.ippolitov.fit.snakes.SnakesProto.*; // Твой протобуф
+import me.ippolitov.fit.snakes.SnakesProto.*;
 
 public class GameController {
 
@@ -19,13 +20,13 @@ public class GameController {
     @FXML
     private Canvas canvas;
     @FXML
+    private Label configLabel, gameNameLabel;
+    @FXML
     private ListView<String> scoreList;
     @FXML
     private BorderPane rootPane;
 
     private SnakeApp app;
-    private static final int CELL_SIZE = 20; // Размер одной клетки в пикселях
-
 
     public void setApp(SnakeApp app) {
         this.app = app;
@@ -62,6 +63,12 @@ public class GameController {
 
     private void draw(GameState state) {
         gameCanvas.drawField(canvas, state);
+
+        gameNameLabel.setText(gameName);
+
+        configLabel.setText("Parameters of field : " + config.getWidth() + "*" + config.getHeight() +
+                "\nStatic food : " + config.getFoodStatic() +
+                "\nDelay : " + config.getStateDelayMs() + " ms");
 
         scoreList.getItems().clear();
         for (GamePlayer player : state.getPlayers().getPlayersList()) {
