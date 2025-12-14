@@ -68,8 +68,8 @@ public class SnakeApp extends Application {
         return mainController.getMyId();
     }
 
-    public void startNewGame(SnakesProto.GameConfig config, String name) {
-        mainController.startNewGame(config, name);
+    public void startNewGame(SnakesProto.GameConfig config, String name, String playerName) {
+        mainController.startNewGame(config, name, playerName);
         showGame(config, name);
     }
 
@@ -79,7 +79,7 @@ public class SnakeApp extends Application {
     }
 
     public void stopGame() {
-        mainController.stopCurrentGame();
+        mainController.stop();
         showMenu();
     }
 
@@ -103,5 +103,11 @@ public class SnakeApp extends Application {
 
     public void moveSnake(SnakesProto.Direction direction) {
         mainController.sendSteer(direction);
+    }
+
+
+    public void showError(String s) {
+        showMenu();
+        menuController.showError(s);
     }
 }

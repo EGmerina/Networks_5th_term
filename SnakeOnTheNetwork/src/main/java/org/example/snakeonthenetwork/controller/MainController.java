@@ -10,10 +10,7 @@ import org.apache.logging.log4j.Logger;
 
 
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 public class MainController {
 
@@ -28,6 +25,8 @@ public class MainController {
     private int myId;
     private int masterId;
 
+    private final Map<Integer, Long> lastSeenNodes = new ConcurrentHashMap<>();
+    private ScheduledFuture<?> timeoutCheckTask;
     private ScheduledExecutorService gameTimer;
     private final Map<Integer, SnakesProto.Direction> movesOfPlayers = new ConcurrentHashMap<>();
     private static final Logger logger = LogManager.getLogger(MainController.class);
@@ -39,7 +38,7 @@ public class MainController {
         this.myRole = SnakesProto.NodeRole.NORMAL;
     }
 
-    public void startNewGame(SnakesProto.GameConfig config, String gameName) {
+    public void startNewGame(SnakesProto.GameConfig config, String gameName, String playerName) {
         this.gameConfig = config;
         this.myRole = SnakesProto.NodeRole.MASTER;
         this.myId = 1;
@@ -48,7 +47,7 @@ public class MainController {
 
         this.engine = new GameEngine(config, gameName);
 
-        this.gameState = engine.createInitialState();
+        this.gameState = engine.createInitialState(playerName);
 
         startGameLoop();
         app.showGame(config, gameName);
@@ -59,82 +58,77 @@ public class MainController {
         if (msg.hasState()) {
             SnakesProto.GameState newState = msg.getState().getState();
 
-            // Если пакет свежий
             if (gameState == null || newState.getStateOrder() > gameState.getStateOrder()) {
                 this.gameState = newState;
-
-                // ВАЖНО: Обновляем UI в потоке JavaFX
-             //   Platform.runLater(() -> app.handleGameState(newState));
+                Platform.runLater(() -> app.updateGameState(newState));
             }
-        }
-
-        // B. Если кто-то хочет повернуть (SteerMsg)
-        else if (msg.hasSteer()) {
-            if (myRole == SnakesProto.NodeRole.MASTER) {
-                // Запоминаем, кто куда хочет, до следующего тика
+        } else if (msg.hasSteer()) {
+            if (myRole == SnakesProto.NodeRole.MASTER) { //TODO проверять порядковый номер сообщения
                 int playerId = msg.getSenderId();
                 movesOfPlayers.put(playerId, msg.getSteer().getDirection());
             }
-        }
-
-        // C. Если кто-то хочет присоединиться (JoinMsg)
-        else if (msg.hasJoin()) {
+        } else if (msg.hasJoin()) {
             if (myRole == SnakesProto.NodeRole.MASTER) {
-                // Спрашиваем движок, есть ли место
-                // Если да -> добавляем змею -> шлем AckMsg с новым ID
-                // Если нет -> шлем ErrorMsg
+                network.sendAck(msg.getSenderId());
+                //TODo шде-то надо слать  ErrorMsg если переполнение
             }
-        }
-
-        // D. Анонсы игр (AnnouncementMsg)
-        else if (msg.hasAnnouncement()) {
-            // Передаем в лобби
+        } else if (msg.hasAnnouncement()) {
             Platform.runLater(() -> app.handleAnnouncement(msg.getAnnouncement().getGamesList()));
-        }
+        } else if (msg.hasAck()) {
+            network.onAckReceived(msg.getMsgSeq());
+            if (msg.getMsgSeq() == lastJoinMsgSeq) {
+                this.myId = msg.getReceiverId(); // Получаем наш ID, назначенный мастером
+                this.myRole = SnakesProto.NodeRole.NORMAL;
+                this.masterId = msg.getSenderId();
 
-        // ... Обработка Ack, Ping, Error ...
+                Platform.runLater(() -> app.showGame(gameConfig, gameName)); //TODO надо понять где меняются конфиг и имя
+            }
+        } else if (msg.hasPing()) {
+            updateNodeTimestamp(msg.getSenderId());
+        } else if (msg.hasDiscover()) {
+            if (myRole == SnakesProto.NodeRole.MASTER) {
+                network.sendAnnouncement(gameState, gameConfig, senderIp, senderPort);
+            }
+        } else if (msg.hasError()) {
+            String errorMessage = msg.getError().getErrorMessage();
+            stop();
+            Platform.runLater(() -> {
+                app.showError("Server Error: " + errorMessage);
+            });
+        } else {
+            logger.error("unknown message");
+        }
     }
 
-    // ==========================================
-    // 4. Игровой цикл (Только для MASTER)
-    // ==========================================
+
     private void startGameLoop() {
         if (gameTimer != null) gameTimer.shutdown();
         gameTimer = Executors.newSingleThreadScheduledExecutor();
 
         gameTimer.scheduleAtFixedRate(() -> {
             try {
-                // 1. Движок считает новый кадр на основе старого и накопленных поворотов
                 SnakesProto.GameState nextState = engine.update(gameState, movesOfPlayers);
 
-                // 2. Обновляем текущее состояние
                 this.gameState = nextState;
-                this.movesOfPlayers.clear(); // Очищаем буфер ходов
+                this.movesOfPlayers.clear();
 
-                // 3. Рассылаем всем игрокам (Broadcast)
                 network.broadcastState(nextState);
 
-                // 4. Себе тоже рисуем
-                //Platform.runLater(() -> app.handleGameState(nextState));
+                Platform.runLater(() -> app.updateGameState(nextState));
 
-                // 5. Раз в секунду шлем Announcement (чтобы нас видели в лобби)
-                network.sendAnnouncement(nextState, gameConfig);
+                network.sendAnnouncement(nextState, gameConfig, senderIp, senderPort);
 
             } catch (Exception e) {
-                e.printStackTrace(); // Чтобы таймер не сдох молча
+                e.printStackTrace();
             }
         }, 0, gameConfig.getStateDelayMs(), TimeUnit.MILLISECONDS);
     }
 
-    // ==========================================
-    // 5. Управление от игрока
-    // ==========================================
+
     public void sendSteer(SnakesProto.Direction dir) {
         if (myRole == SnakesProto.NodeRole.MASTER) {
-            // Если я Мастер, мне не надо слать по сети, я просто кладу себе в буфер
             movesOfPlayers.put(myId, dir);
         } else {
-            // Если я Обычный, шлю сообщение Мастеру
             network.sendSteer(dir, masterId);
         }
     }
@@ -144,15 +138,57 @@ public class MainController {
         if (gameTimer != null) gameTimer.shutdown();
     }
 
-    // Геттеры для UI
     public int getMyId() {
         return myId;
     }
 
-    public void stopCurrentGame() {
+    public void joinGame(SnakesProto.GameAnnouncement announcement) {
+        network.sendJoin(announcement.getGameName());
     }
 
-    public void joinGame(SnakesProto.GameAnnouncement announcement) {
+
+    //TODO теперь тут куча фигокода...
+
+    private void updateNodeTimestamp(int nodeId) { //TODO сделать поток
+        lastSeenNodes.put(nodeId, System.currentTimeMillis());
+    }
+
+    private void startTimeoutCheck() {
+        // Проверяем каждую секунду
+        timeoutCheckTask = gameTimer.scheduleAtFixedRate(this::checkNodes, 1, 1, TimeUnit.SECONDS);
+    }
+
+    private void checkNodes() {
+        long now = System.currentTimeMillis();
+        int timeout = config.getNodeTimeoutMs();
+
+        lastSeenNodes.forEach((id, lastSeen) -> {
+            // Мы (Мастер) не проверяем самих себя
+            if (id == myId) return;
+
+            if (now - lastSeen > timeout) {
+                System.out.println("Node " + id + " timed out. Handling...");
+                handleNodeTimeout(id);
+            }
+        });
+    }
+
+    private void handleNodeTimeout(int playerId) {
+        // 1. Убираем игрока из списка активных проверок
+        lastSeenNodes.remove(playerId);
+
+        // 2. Меняем роль игрока на VIEWER (наблюдатель)
+        // В Protobuf мы должны найти игрока в GameState и обновить его роль
+        engine.makePlayerViewer(playerId);
+
+        // 3. Змея остается на поле (SnakeState.ALIVE), но теперь она "зомби"
+        // Она будет просто ползти прямо, пока не врежется во что-нибудь.
+        // В твоем движке (Engine) должна быть пометка, что у этой змеи больше нет владельца.
+
+        // 4. Если отвалился DEPUTY (заместитель), Мастер должен назначить нового!
+        if (isDeputy(playerId)) {
+            assignNewDeputy();
+        }
     }
 }
 

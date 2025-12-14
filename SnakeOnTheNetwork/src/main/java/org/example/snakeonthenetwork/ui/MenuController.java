@@ -79,12 +79,19 @@ public class MenuController {
         String selected = gamesList.getSelectionModel().getSelectedItem();
         if (selected != null) {
             logger.info("Joining: " + selected);
-            if (app != null) {
-                app.joinGame(availableGames.get(selected));
+            GameAnnouncement announcement = availableGames.get(selected);
+            if (app != null && announcement.getCanJoin()) {
+                app.joinGame(announcement);
                 availableGames.clear();
+            }else{
+                statusLabel.setText("too many players!");
             }
         } else {
             statusLabel.setText("Please select a game first!");
         }
+    }
+
+    public void showError(String s) {
+        statusLabel.setText(s);
     }
 }
