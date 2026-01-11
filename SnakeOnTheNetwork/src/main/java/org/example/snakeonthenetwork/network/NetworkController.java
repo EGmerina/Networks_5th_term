@@ -1,5 +1,6 @@
 package org.example.snakeonthenetwork.network;
 
+import javafx.application.Platform;
 import me.ippolitov.fit.snakes.SnakesProto;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -7,94 +8,117 @@ import org.example.snakeonthenetwork.controller.MainController;
 
 import java.net.*;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class NetworkController {
 
     private static final Logger logger = LogManager.getLogger(NetworkController.class);
     private static int stateDelay = 0;
-    private static final int MULTICAST_PORT = 9192;
-    private static final String MULTICAST_GROUP = "239.192.0.4";
-    private static int RETRANSMIT_TIMEOUT_MS = stateDelay / 10; // Интервал переотправки (state_delay / 10)
-
+    private static int RESEND_TIMEOUT_MS = stateDelay / 10;
 
     private final MainController controller;
 
-    private DatagramSocket unicastSocket;
-    private MulticastSocket multicastSocket;
+    private MulticastService multicastService;
+    private UnicastService unicastService;
 
-    private Thread unicastThread;    // Бесконечный цикл приема UDP
-    private Thread multicastThread;  // Бесконечный цикл приема Multicast
-    private ScheduledExecutorService scheduler; // Таймер для переотправки (Reliability)
+    private ScheduledExecutorService resendTimer = Executors.newSingleThreadScheduledExecutor();
+    private ScheduledFuture<?> resendTask = null;
 
     private final AtomicLong seqCounter = new AtomicLong(0);
-    private final Map<Long, PendingMessage> pendingMessages = new ConcurrentHashMap<>();
-    private final Map<Integer, Long> receivedMessages = new ConcurrentHashMap<>();
+    private final Map<Long, SnakesProto.GameMessage> unconfirmedMessages = new ConcurrentHashMap<>();
+    private final Map<Integer, Long> receivedMessages = new ConcurrentHashMap<>(); //для проверки повторных пакетов
 
+    private AtomicLong lastSendTime = new AtomicLong(0);
     //TODO хранить  map игроков и ip
 
     public NetworkController(MainController mainController) {
         this.controller = mainController;
+        multicastService = new MulticastService(this);
+        unicastService = new UnicastService(this);
     }
 
     public void start() {
-
-    }
-
-    private void listenMulticast() {
-        while (true) {
-
-        }
-    }
-
-    private void listenUnicast() {
+        multicastService.start();
+        unicastService.start();
+        resendTask = resendTimer.scheduleAtFixedRate(() -> {
+            unconfirmedMessages.forEach((seq, msg) -> {
+                resend(msg);
+            });
+        }, 0, RESEND_TIMEOUT_MS, TimeUnit.MILLISECONDS);
     }
 
     public void stop() {
+        multicastService.stop();
+        unicastService.stop();
+        unconfirmedMessages.clear();
+        receivedMessages.clear();
+        resendTask.cancel(true);
     }
 
     public void sendSteer(SnakesProto.Direction dir, int masterId) {
-    }
-
-    public void broadcastState(SnakesProto.GameState nextState) {
-    }
-
-    public void sendAnnouncement(SnakesProto.GameState nextState, SnakesProto.GameConfig gameConfig) {
+        lastSendTime.set(System.currentTimeMillis());
     }
 
     public void sendAck(long msgSeq, int senderId) {
+        lastSendTime.set(System.currentTimeMillis());
     }
 
-    public void onAckReceived(long msgSeq) {
-        // Удаляем сообщение из списка ожидания.
-        // Таймер переотправки больше не будет его слать.
-        PendingMessage removed = pendingMessages.remove(seq);
-        if (removed != null) {
-            System.out.println("Message " + seq + " acknowledged.");
-        }
-    }
 
     public void sendJoin(SnakesProto.GameMessage.JoinMsg join, InetAddress host, int port, long seq) {
-        un
+        lastSendTime.set(System.currentTimeMillis());
     }
 
-    public long getNextSeq() {
-    }
 
     public void sendError(String noSpaceOrGameFull, long msgSeq) {
-    }
-
-    public void startPingTask() {
+        lastSendTime.set(System.currentTimeMillis());
     }
 
     public void sendChangeRole(int senderId, SnakesProto.NodeRole senderRole, int recId, SnakesProto.NodeRole recRole) {
+        lastSendTime.set(System.currentTimeMillis());
     }
 
-    public void sendChangeMaster(int masterId) {
+
+    public void sendPing() {
+        if (System.currentTimeMillis() - lastSendTime.get() > RESEND_TIMEOUT_MS) {
+            //TODO сформировать msg
+            unicastService.send();
+        }
     }
 
-    public void sendPing() { //TODO сделать проверку на последнюю отправку время
+    public void broadcastState(SnakesProto.GameState nextState) {
+        lastSendTime.set(System.currentTimeMillis());
     }
+
+    public void broadcastAnnouncement(SnakesProto.GameState nextState, SnakesProto.GameConfig gameConfig) {
+        lastSendTime.set(System.currentTimeMillis());
+    }
+
+    public void broadcastChangeMaster(int masterId) {
+        lastSendTime.set(System.currentTimeMillis());
+    }
+
+    public void onAckReceived(long msgSeq) {
+        SnakesProto.GameMessage removed = unconfirmedMessages.remove(msgSeq);
+        if (removed == null) {
+            unconfirmedMessages.put(msgSeq, null);
+        }
+    }
+
+    private void resend(SnakesProto.GameMessage msg) {
+        if (msg == null) return;
+        unicastService.send(msg);
+    }
+
+    public long getNextSeq() {
+        return seqCounter.addAndGet(1);
+    }
+
+    public void setStateDelay(int stateDelayMs) {
+        stateDelay = stateDelayMs;
+        receivedMessages.clear();
+        unconfirmedMessages.clear();
+    }
+
+
 }

@@ -63,6 +63,7 @@ public class MainController {
         this.engine = new GameEngine(config);
         this.gameState = engine.createInitialState(playerName);
 
+        network.setStateDelay(gameConfig.getStateDelayMs());
         startGameLoop();
 
         app.showGame(config, gameName);
@@ -96,7 +97,7 @@ public class MainController {
 
         announcementTask = gameScheduler.scheduleAtFixedRate(() -> {
             try {
-                network.sendAnnouncement(gameState, gameConfig);
+                network.broadcastAnnouncement(gameState, gameConfig);
             } catch (Exception e) {
                 logger.error("Announcement error", e);
             }
@@ -111,6 +112,7 @@ public class MainController {
         this.myRole = SnakesProto.NodeRole.NORMAL;
 
         this.lastJoinMsgSeq = network.getNextSeq();
+        network.setStateDelay(gameConfig.getStateDelayMs());
 
         SnakesProto.GameMessage.JoinMsg join = SnakesProto.GameMessage.JoinMsg.newBuilder()
                 .setGameName(gameName)
@@ -122,7 +124,7 @@ public class MainController {
     }
 
     public void onMessageReceived(SnakesProto.GameMessage msg) { //вызывается из network, не проверяю роли, с надеждой на правильность отправки
-        updateNodeTimestamp(msg.getSenderId());
+        updateNodeTimestamp(msg.getSenderId()); //TODO ааааа в итоге где следить за отвалкой игроков????
         if (msg.hasAck()) {
             handleAck(msg);
             return;
@@ -130,7 +132,7 @@ public class MainController {
             app.handleAnnouncement(msg.getAnnouncement().getGames(0)); //вроде как один игрок аннонсирует только одну игру. TODO проверить индекс
             return;
         } else if (msg.hasDiscover()) {
-            network.sendAnnouncement(gameState, gameConfig);
+            network.broadcastAnnouncement(gameState, gameConfig);
             return;
         } else if (msg.hasState()) {
             handleState(msg);
@@ -235,7 +237,7 @@ public class MainController {
         } else if (playerId == masterId && myId == deputyId) {
             myRole = SnakesProto.NodeRole.MASTER;
             masterId = myId;
-            network.sendChangeMaster(myId);
+            network.broadcastChangeMaster(myId);
             assignNewDeputy();
             startGameLoop();
         } else if (playerId == masterId) {
