@@ -4,9 +4,7 @@ import me.ippolitov.fit.snakes.SnakesProto;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.example.snakeonthenetwork.controller.MainController;
-import org.example.snakeonthenetwork.ui.MenuController;
 
-import java.io.IOException;
 import java.net.*;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -35,34 +33,18 @@ public class NetworkController {
     private final Map<Long, PendingMessage> pendingMessages = new ConcurrentHashMap<>();
     private final Map<Integer, Long> receivedMessages = new ConcurrentHashMap<>();
 
+    //TODO хранить  map игроков и ip
 
     public NetworkController(MainController mainController) {
         this.controller = mainController;
     }
 
     public void start() {
-        try {
-            unicastSocket = new DatagramSocket();
-            unicastThread = new Thread(this::listenUnicast, "UnicastListener");
-            unicastThread.start();
 
-            multicastSocket = new MulticastSocket(MULTICAST_PORT);
-            InetAddress group = InetAddress.getByName(MULTICAST_GROUP);
-            multicastSocket.joinGroup(group); //TODO поменять функцию
-            multicastThread = new Thread(this:: listenMulticast, "MulticastListener");
-            multicastThread.start();
-
-        } catch (SocketException e) {
-            logger.error("can't open datagram socket");
-            throw new RuntimeException(e);
-        } catch (IOException e) {
-            logger.error("can't open multicast socket");
-            throw new RuntimeException(e);
-        }
     }
 
     private void listenMulticast() {
-        while (true){
+        while (true) {
 
         }
     }
@@ -79,13 +61,10 @@ public class NetworkController {
     public void broadcastState(SnakesProto.GameState nextState) {
     }
 
-    public void sendAnnouncement(SnakesProto.GameState nextState, SnakesProto.GameConfig gameConfig, String senderIp, int senderPort) {
+    public void sendAnnouncement(SnakesProto.GameState nextState, SnakesProto.GameConfig gameConfig) {
     }
 
-    public void sendJoin(String gameName) {
-    }
-
-    public void sendAck(int senderId) {
+    public void sendAck(long msgSeq, int senderId) {
     }
 
     public void onAckReceived(long msgSeq) {
@@ -95,5 +74,27 @@ public class NetworkController {
         if (removed != null) {
             System.out.println("Message " + seq + " acknowledged.");
         }
+    }
+
+    public void sendJoin(SnakesProto.GameMessage.JoinMsg join, InetAddress host, int port, long seq) {
+        un
+    }
+
+    public long getNextSeq() {
+    }
+
+    public void sendError(String noSpaceOrGameFull, long msgSeq) {
+    }
+
+    public void startPingTask() {
+    }
+
+    public void sendChangeRole(int senderId, SnakesProto.NodeRole senderRole, int recId, SnakesProto.NodeRole recRole) {
+    }
+
+    public void sendChangeMaster(int masterId) {
+    }
+
+    public void sendPing() { //TODO сделать проверку на последнюю отправку время
     }
 }

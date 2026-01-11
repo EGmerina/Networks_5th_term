@@ -12,7 +12,7 @@ public class GameEngine {
     private String gameName;
     private final Random random = new Random();
 
-    public GameEngine(SnakesProto.GameConfig config, String gameName) {
+    public GameEngine(SnakesProto.GameConfig config) {
         this.config = config;
         this.gameName = gameName;
     }
@@ -105,6 +105,20 @@ public class GameEngine {
         return SnakesProto.GameState.Coord.newBuilder().setX(x).setY(y).build();
     }
     public SnakesProto.GameState update(SnakesProto.GameState gameState, Map<Integer, SnakesProto.Direction> movesOfPlayers) {
+        if(movesOfPlayers ==null)
+    }
 
+    public int addPlayer(String playerName, SnakesProto.NodeRole requestedRole) {
+    }
+
+    public void makePlayerViewer(int playerId) {
+
+    }
+
+    public SnakesProto.GameState removePlayer(int playerId) {
+        return null;
+    }
+
+    public SnakesProto.GameState updateRole(SnakesProto.GameState gameState, int deputyId, SnakesProto.NodeRole nodeRole) {
     }
 }

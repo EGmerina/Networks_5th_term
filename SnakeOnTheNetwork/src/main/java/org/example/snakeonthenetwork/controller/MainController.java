@@ -8,187 +8,311 @@ import org.example.snakeonthenetwork.ui.SnakeApp;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-
+import java.net.InetAddress;
 import java.util.Map;
 import java.util.concurrent.*;
 
 public class MainController {
 
-    private SnakeApp app;
-    private NetworkController network;
-    private GameEngine engine;
+    private final int NUM_THREADS = 2;
+    private final int ANNOUNCEMENT_DELAY = 1; //sec
 
+    private final SnakeApp app;
+    private final NetworkController network;
+    private GameEngine engine;
+    private static final Logger logger = LogManager.getLogger(MainController.class);
+
+
+    private volatile SnakesProto.GameState gameState;
     private SnakesProto.GameConfig gameConfig;
     private String gameName;
-    private volatile SnakesProto.GameState gameState;
-    private SnakesProto.NodeRole myRole;
+
+    private volatile SnakesProto.NodeRole myRole = SnakesProto.NodeRole.NORMAL;
+    private String myName;
     private int myId;
-    private int masterId;
+
+    private int deputyId = -1;
+    private int masterId = -1;
+
+    private ScheduledExecutorService gameScheduler; //для проверки игроков и игрового цикла
+    private ScheduledFuture<?> gameLoopTask = null;
+    private ScheduledFuture<?> announcementTask = null;
+    private ScheduledFuture<?> timeoutTask = null;
+    private ScheduledFuture<?> pingTask = null;
 
     private final Map<Integer, Long> lastSeenNodes = new ConcurrentHashMap<>();
-    private ScheduledFuture<?> timeoutCheckTask;
-    private ScheduledExecutorService gameTimer;
-    private final Map<Integer, SnakesProto.Direction> movesOfPlayers = new ConcurrentHashMap<>();
-    private static final Logger logger = LogManager.getLogger(MainController.class);
+    private final Map<Integer, SnakesProto.Direction> movesBuffer = new ConcurrentHashMap<>();
+
+    // Данные для подключения (ACK на Join)
+    private long lastJoinMsgSeq = -1;
 
     public MainController(SnakeApp app) {
         this.app = app;
         this.network = new NetworkController(this);
+        this.gameScheduler = Executors.newScheduledThreadPool(NUM_THREADS);
         this.network.start();
-        this.myRole = SnakesProto.NodeRole.NORMAL;
     }
 
     public void startNewGame(SnakesProto.GameConfig config, String gameName, String playerName) {
         this.gameConfig = config;
+        this.gameName = gameName;
         this.myRole = SnakesProto.NodeRole.MASTER;
         this.myId = 1;
-        this.masterId = 1;
-        this.gameName = gameName;
+        this.masterId = myId;
 
-        this.engine = new GameEngine(config, gameName);
-
+        this.engine = new GameEngine(config);
         this.gameState = engine.createInitialState(playerName);
 
         startGameLoop();
+
         app.showGame(config, gameName);
         app.updateGameState(gameState);
     }
 
-    public void onMessageReceived(SnakesProto.GameMessage msg, String senderIp, int senderPort) {
-        if (msg.hasState()) {
-            SnakesProto.GameState newState = msg.getState().getState();
+    private void startGameLoop() { //для мастера
+        stopAllTasks();
 
-            if (gameState == null || newState.getStateOrder() > gameState.getStateOrder()) {
-                this.gameState = newState;
-                Platform.runLater(() -> app.updateGameState(newState));
-            }
-        } else if (msg.hasSteer()) {
-            if (myRole == SnakesProto.NodeRole.MASTER) { //TODO проверять порядковый номер сообщения
-                int playerId = msg.getSenderId();
-                movesOfPlayers.put(playerId, msg.getSteer().getDirection());
-            }
-        } else if (msg.hasJoin()) {
-            if (myRole == SnakesProto.NodeRole.MASTER) {
-                network.sendAck(msg.getSenderId());
-                //TODo шде-то надо слать  ErrorMsg если переполнение
-            }
-        } else if (msg.hasAnnouncement()) {
-            Platform.runLater(() -> app.handleAnnouncement(msg.getAnnouncement().getGamesList()));
-        } else if (msg.hasAck()) {
-            network.onAckReceived(msg.getMsgSeq());
-            if (msg.getMsgSeq() == lastJoinMsgSeq) {
-                this.myId = msg.getReceiverId(); // Получаем наш ID, назначенный мастером
-                this.myRole = SnakesProto.NodeRole.NORMAL;
-                this.masterId = msg.getSenderId();
-
-                Platform.runLater(() -> app.showGame(gameConfig, gameName)); //TODO надо понять где меняются конфиг и имя
-            }
-        } else if (msg.hasPing()) {
-            updateNodeTimestamp(msg.getSenderId());
-        } else if (msg.hasDiscover()) {
-            if (myRole == SnakesProto.NodeRole.MASTER) {
-                network.sendAnnouncement(gameState, gameConfig, senderIp, senderPort);
-            }
-        } else if (msg.hasError()) {
-            String errorMessage = msg.getError().getErrorMessage();
-            stop();
-            Platform.runLater(() -> {
-                app.showError("Server Error: " + errorMessage);
-            });
-        } else {
-            logger.error("unknown message");
+        if (gameScheduler.isShutdown()) {
+            gameScheduler = Executors.newScheduledThreadPool(NUM_THREADS);
         }
-    }
 
+        startPingTask(); //TODo решить как пересылать все мастеру
 
-    private void startGameLoop() {
-        if (gameTimer != null) gameTimer.shutdown();
-        gameTimer = Executors.newSingleThreadScheduledExecutor();
-
-        gameTimer.scheduleAtFixedRate(() -> {
+        gameLoopTask = gameScheduler.scheduleAtFixedRate(() -> {
             try {
-                SnakesProto.GameState nextState = engine.update(gameState, movesOfPlayers);
-
+                SnakesProto.GameState nextState = engine.update(gameState, movesBuffer);
                 this.gameState = nextState;
-                this.movesOfPlayers.clear();
+                this.movesBuffer.clear();
 
                 network.broadcastState(nextState);
 
                 Platform.runLater(() -> app.updateGameState(nextState));
 
-                network.sendAnnouncement(nextState, gameConfig, senderIp, senderPort);
-
             } catch (Exception e) {
-                e.printStackTrace();
+                logger.error("Game loop error", e);
             }
         }, 0, gameConfig.getStateDelayMs(), TimeUnit.MILLISECONDS);
-    }
 
 
-    public void sendSteer(SnakesProto.Direction dir) {
-        if (myRole == SnakesProto.NodeRole.MASTER) {
-            movesOfPlayers.put(myId, dir);
-        } else {
-            network.sendSteer(dir, masterId);
-        }
-    }
+        announcementTask = gameScheduler.scheduleAtFixedRate(() -> {
+            try {
+                network.sendAnnouncement(gameState, gameConfig);
+            } catch (Exception e) {
+                logger.error("Announcement error", e);
+            }
+        }, 0, ANNOUNCEMENT_DELAY, TimeUnit.SECONDS);
 
-    public void stop() {
-        if (network != null) network.stop();
-        if (gameTimer != null) gameTimer.shutdown();
-    }
-
-    public int getMyId() {
-        return myId;
+        timeoutTask = gameScheduler.scheduleAtFixedRate(this::checkNodes, 1, (long) (0.8 * gameConfig.getStateDelayMs()), TimeUnit.MILLISECONDS); //TODO тут хз какой интервал дожен быть
     }
 
     public void joinGame(SnakesProto.GameAnnouncement announcement) {
-        network.sendJoin(announcement.getGameName());
+        this.gameConfig = announcement.getConfig();
+        this.gameName = announcement.getGameName();
+        this.myRole = SnakesProto.NodeRole.NORMAL;
+
+        this.lastJoinMsgSeq = network.getNextSeq();
+
+        SnakesProto.GameMessage.JoinMsg join = SnakesProto.GameMessage.JoinMsg.newBuilder()
+                .setGameName(gameName)
+                .setPlayerName(myName)
+                .setRequestedRole(SnakesProto.NodeRole.NORMAL)
+                .build();
+
+        network.sendJoin(join, host, port, lastJoinMsgSeq);
+    }
+
+    public void onMessageReceived(SnakesProto.GameMessage msg) { //вызывается из network, не проверяю роли, с надеждой на правильность отправки
+        updateNodeTimestamp(msg.getSenderId());
+        if (msg.hasAck()) {
+            handleAck(msg);
+            return;
+        } else if (msg.hasAnnouncement()) {
+            app.handleAnnouncement(msg.getAnnouncement().getGames(0)); //вроде как один игрок аннонсирует только одну игру. TODO проверить индекс
+            return;
+        } else if (msg.hasDiscover()) {
+            network.sendAnnouncement(gameState, gameConfig);
+            return;
+        } else if (msg.hasState()) {
+            handleState(msg);
+
+        } else if (msg.hasError()) { //это вместо Ack на join
+            Platform.runLater(() -> app.showError(msg.getError().getErrorMessage()));
+        } else if (msg.hasPing()) { //время обновилось
+
+        } else if (msg.hasSteer()) {
+            movesBuffer.put(msg.getSenderId(), msg.getSteer().getDirection());
+        } else if (msg.hasJoin()) {
+            handleJoinRequest(msg);
+        } else if (msg.hasRoleChange()) {
+            handleRoleChange(msg);
+        } else {
+            logger.error("Get unknown message :{}", msg);
+            return;
+        }
+        network.sendAck(msg.getMsgSeq(), msg.getSenderId());
+    }
+
+    private void handleRoleChange(SnakesProto.GameMessage msg) {
+        if (!msg.getRoleChange().hasReceiverRole() && msg.getRoleChange().getSenderRole() == SnakesProto.NodeRole.MASTER) {
+            masterId = msg.getSenderId();
+        } else if (msg.getRoleChange().getReceiverRole() == SnakesProto.NodeRole.DEPUTY) {
+            deputyId = myId;
+            myRole = SnakesProto.NodeRole.DEPUTY;
+        } else if (msg.getRoleChange().getSenderRole() == SnakesProto.NodeRole.VIEWER) {
+            removePlayer(msg.getSenderId());
+        }
+    }
+
+    private void handleState(SnakesProto.GameMessage msg) {
+        SnakesProto.GameState newState = msg.getState().getState();
+        if (gameState == null || newState.getStateOrder() > gameState.getStateOrder()) {
+            this.gameState = newState;
+            masterId = msg.getSenderId();
+            deputyId = getDeputyId();
+            Platform.runLater(() -> app.updateGameState(newState));
+        }
+    }
+
+    private void handleAck(SnakesProto.GameMessage msg) {
+        if (msg.getMsgSeq() == lastJoinMsgSeq) {
+            this.myId = msg.getReceiverId();
+            this.masterId = msg.getSenderId();
+            //не меняем роль, так как указали ее в joinGame
+
+            Platform.runLater(() -> app.showGame(gameConfig, gameName));
+            startPingTask();
+        }
+        network.onAckReceived(msg.getMsgSeq());
+    }
+
+    private void startPingTask() {
+        pingTask = gameScheduler.scheduleAtFixedRate(() -> {
+            try {
+                network.sendPing();
+            } catch (Exception e) {
+                logger.error("Ping error", e);
+            }
+        }, 0, gameConfig.getStateDelayMs() / 10, TimeUnit.MILLISECONDS);
+    }
+
+    private void handleJoinRequest(SnakesProto.GameMessage msg) {
+        SnakesProto.GameMessage.JoinMsg join = msg.getJoin();
+
+        int newPlayerId = engine.addPlayer(join.getPlayerName(), join.getRequestedRole());
+
+        if (newPlayerId == -1) {
+            network.sendError("No space or game full", msg.getMsgSeq());
+            return;
+        }
+        network.sendAck(msg.getMsgSeq(), newPlayerId);
     }
 
 
-    //TODO теперь тут куча фигокода...
-
-    private void updateNodeTimestamp(int nodeId) { //TODO сделать поток
+    private void updateNodeTimestamp(int nodeId) {
         lastSeenNodes.put(nodeId, System.currentTimeMillis());
     }
 
-    private void startTimeoutCheck() {
-        // Проверяем каждую секунду
-        timeoutCheckTask = gameTimer.scheduleAtFixedRate(this::checkNodes, 1, 1, TimeUnit.SECONDS);
-    }
 
     private void checkNodes() {
         long now = System.currentTimeMillis();
-        int timeout = config.getNodeTimeoutMs();
+        long timeout = (long) (gameConfig.getStateDelayMs() * 0.8);
 
         lastSeenNodes.forEach((id, lastSeen) -> {
-            // Мы (Мастер) не проверяем самих себя
+
             if (id == myId) return;
 
             if (now - lastSeen > timeout) {
-                System.out.println("Node " + id + " timed out. Handling...");
+                logger.trace("Node " + id + " timed out. Handling...");
                 handleNodeTimeout(id);
             }
         });
     }
 
     private void handleNodeTimeout(int playerId) {
-        // 1. Убираем игрока из списка активных проверок
-        lastSeenNodes.remove(playerId);
-
-        // 2. Меняем роль игрока на VIEWER (наблюдатель)
-        // В Protobuf мы должны найти игрока в GameState и обновить его роль
-        engine.makePlayerViewer(playerId);
-
-        // 3. Змея остается на поле (SnakeState.ALIVE), но теперь она "зомби"
-        // Она будет просто ползти прямо, пока не врежется во что-нибудь.
-        // В твоем движке (Engine) должна быть пометка, что у этой змеи больше нет владельца.
-
-        // 4. Если отвалился DEPUTY (заместитель), Мастер должен назначить нового!
-        if (isDeputy(playerId)) {
+        removePlayer(playerId);
+        if (playerId == deputyId && myId == masterId) {
             assignNewDeputy();
+        } else if (playerId == masterId && myId == deputyId) {
+            myRole = SnakesProto.NodeRole.MASTER;
+            masterId = myId;
+            network.sendChangeMaster(myId);
+            assignNewDeputy();
+            startGameLoop();
+        } else if (playerId == masterId) {
+            //TODO ????
         }
+    }
+
+    private void removePlayer(int playerId) {
+        lastSeenNodes.remove(playerId);
+        //делаем игрока viewer, пока его зомби-змейка не расшибется
+        this.gameState = engine.removePlayer(playerId); // TODO сделать thread-safe!!!!!
+    }
+
+    private void assignNewDeputy() { //только для мастера
+        deputyId = -1;
+        for (SnakesProto.GamePlayer player : gameState.getPlayers().getPlayersList()) {
+            if (player.getId() != myId && player.getRole() == SnakesProto.NodeRole.NORMAL && lastSeenNodes.containsKey(player.getId())) {
+                deputyId = player.getId();
+            }
+        }
+        if (deputyId == -1) {
+            return;
+        }
+        me.ippolitov.fit.snakes.SnakesProto.GameState newState = engine.updateRole(gameState, deputyId, SnakesProto.NodeRole.DEPUTY);
+        gameState = newState;
+        network.sendChangeRole(myId, SnakesProto.NodeRole.MASTER, deputyId, SnakesProto.NodeRole.DEPUTY);
+    }
+
+    private int getDeputyId() {
+        for (SnakesProto.GamePlayer player : gameState.getPlayers().getPlayersList()) {
+            if (player.getRole() == SnakesProto.NodeRole.DEPUTY) {
+                return player.getId();
+            }
+        }
+        return -1;
+    }
+
+    private void stopAllTasks() {
+        if (gameLoopTask != null) {
+            gameLoopTask.cancel(true);
+            gameLoopTask = null;
+        }
+
+        if (announcementTask != null) {
+            announcementTask.cancel(true);
+            announcementTask = null;
+        }
+
+        if (timeoutTask != null) {
+            timeoutTask.cancel(true);
+            timeoutTask = null;
+        }
+
+        if (pingTask != null) {
+            pingTask.cancel(true);
+            pingTask = null;
+        }
+
+        logger.info("All tasks stopped.");
+    }
+
+    public void stopGame() {
+        lastSeenNodes.clear();
+        movesBuffer.clear();
+        stopAllTasks();
+    }
+
+    public void sendSteer(SnakesProto.Direction direction) {
+        if (myRole == SnakesProto.NodeRole.MASTER) { //TODo возможно стоит убрать myRole и оставить только myId
+            movesBuffer.put(myId, direction);
+        } else {
+            network.sendSteer(direction, masterId);
+        }
+    }
+
+    public int getMyId() {
+        return myId;
     }
 }
 

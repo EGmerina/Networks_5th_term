@@ -15,8 +15,8 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.io.IOException;
+import java.util.Collection;
 import java.util.HashMap;
-import java.util.List;
 
 public class MenuController {
     private static final Logger logger = LogManager.getLogger(MenuController.class);
@@ -33,11 +33,12 @@ public class MenuController {
         this.app = app;
     }
 
-    public void updateGameList(List<GameAnnouncement> games) {
+    public void updateGameList(Collection<DiscoveredGame> games) {
         Platform.runLater(() -> {
             gamesList.getItems().clear();
 
-            for (SnakesProto.GameAnnouncement game : games) {
+            for (DiscoveredGame dgame : games) {
+                GameAnnouncement game = dgame.announcement();
                 String gameInfo = game.getGameName() + " | Players: " + game.getPlayers().getPlayersCount();
 
                 // Проверяем дубликаты
@@ -83,7 +84,7 @@ public class MenuController {
             if (app != null && announcement.getCanJoin()) {
                 app.joinGame(announcement);
                 availableGames.clear();
-            }else{
+            } else {
                 statusLabel.setText("too many players!");
             }
         } else {

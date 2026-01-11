@@ -10,15 +10,17 @@ import me.ippolitov.fit.snakes.SnakesProto;
 import org.example.snakeonthenetwork.controller.MainController;
 
 import java.io.IOException;
+import java.sql.Time;
 import java.util.HashMap;
 import java.util.List;
 
 public class SnakeApp extends Application {
+    private static final long TIME_TO_UPDATE = 1000;
     private Stage primaryStage;
     private GameController gameController;
     private MenuController menuController;
     private MainController mainController;
-    private final HashMap<String, SnakesProto.GameAnnouncement> availableGames = new HashMap<>();
+    private final HashMap<String, DiscoveredGame> availableGames = new HashMap<>();
 
     @Override
     public void start(Stage stage) throws IOException {
@@ -45,7 +47,7 @@ public class SnakeApp extends Application {
         }
     }
 
-    public void showGame(SnakesProto.GameConfig config, String name) {
+    public void showGame(SnakesProto.GameConfig config, String gameName) {
         try {
             FXMLLoader loader = new FXMLLoader(getClass().getResource("/view/game-view.fxml"));
             Parent root = loader.load();
@@ -53,7 +55,7 @@ public class SnakeApp extends Application {
             GameController controller = loader.getController();
             controller.setApp(this);
             controller.setConfig(config);
-            controller.setName(name);
+            controller.setName(gameName);
             this.gameController = controller;
             this.menuController = null;
 
@@ -79,7 +81,7 @@ public class SnakeApp extends Application {
     }
 
     public void stopGame() {
-        mainController.stop();
+        mainController.stopGame();
         showMenu();
     }
 
@@ -90,11 +92,14 @@ public class SnakeApp extends Application {
         gameController.updateGameState(gameState);
     }
 
-    public void handleAnnouncement(List<SnakesProto.GameAnnouncement> games) {
+    public void handleAnnouncement(SnakesProto.GameAnnouncement announcement) {
         if (menuController == null) {
             return;
         }
-        menuController.updateGameList(games);
+        Long now = System.currentTimeMillis();
+        availableGames.put(announcement.getGameName(), new DiscoveredGame(announcement, now));
+        availableGames.values().removeIf(game -> (now - game.lastUpdateTime()) > TIME_TO_UPDATE);
+        menuController.updateGameList(availableGames.values());
     }
 
     public Window getPrimaryStage() {
