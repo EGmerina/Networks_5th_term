@@ -1,6 +1,5 @@
 package org.example.snakeonthenetwork.network;
 
-import javafx.application.Platform;
 import me.ippolitov.fit.snakes.SnakesProto;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -28,9 +27,10 @@ public class NetworkController {
     private final AtomicLong seqCounter = new AtomicLong(0);
     private final Map<Long, SnakesProto.GameMessage> unconfirmedMessages = new ConcurrentHashMap<>();
     private final Map<Integer, Long> receivedMessages = new ConcurrentHashMap<>(); //для проверки повторных пакетов
+    private final Map<Integer, InetSocketAddress> playersAddresses = new ConcurrentHashMap<>();
 
     private AtomicLong lastSendTime = new AtomicLong(0);
-    //TODO хранить  map игроков и ip
+
 
     public NetworkController(MainController mainController) {
         this.controller = mainController;
@@ -57,7 +57,10 @@ public class NetworkController {
     }
 
     public void sendSteer(SnakesProto.Direction dir, int masterId) {
+        long msg_seq = seqCounter.addAndGet(1);
         lastSendTime.set(System.currentTimeMillis());
+        //TODO сформровать msg
+        unconfirmedMessages.put(msg_seq, msg);
     }
 
     public void sendAck(long msgSeq, int senderId) {
@@ -65,8 +68,15 @@ public class NetworkController {
     }
 
 
-    public void sendJoin(SnakesProto.GameMessage.JoinMsg join, InetAddress host, int port, long seq) {
+    public long sendJoin(SnakesProto.GameAnnouncement join) {
+        long msg_seq = seqCounter.addAndGet(1);
         lastSendTime.set(System.currentTimeMillis());
+        SnakesProto.GameMessage.JoinMsg join = SnakesProto.GameMessage.JoinMsg.newBuilder()
+                .setGameName(gameName)
+                .setPlayerName(myName)
+                .setRequestedRole(SnakesProto.NodeRole.NORMAL)
+                .build();
+        return msg_seq;
     }
 
 

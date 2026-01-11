@@ -27,8 +27,8 @@ public class MainController {
     private SnakesProto.GameConfig gameConfig;
     private String gameName;
 
-    private volatile SnakesProto.NodeRole myRole = SnakesProto.NodeRole.NORMAL;
-    private String myName;
+    private volatile SnakesProto.NodeRole myRole = SnakesProto.NodeRole.NORMAL; //TODO е нужно!
+    private String myName; //TODO нигде не передается!!!
     private int myId;
 
     private int deputyId = -1;
@@ -111,16 +111,10 @@ public class MainController {
         this.gameName = announcement.getGameName();
         this.myRole = SnakesProto.NodeRole.NORMAL;
 
-        this.lastJoinMsgSeq = network.getNextSeq();
+        //  this.lastJoinMsgSeq = network.getNextSeq();
         network.setStateDelay(gameConfig.getStateDelayMs());
 
-        SnakesProto.GameMessage.JoinMsg join = SnakesProto.GameMessage.JoinMsg.newBuilder()
-                .setGameName(gameName)
-                .setPlayerName(myName)
-                .setRequestedRole(SnakesProto.NodeRole.NORMAL)
-                .build();
-
-        network.sendJoin(join, host, port, lastJoinMsgSeq);
+        lastJoinMsgSeq = network.sendJoin(announcement);
     }
 
     public void onMessageReceived(SnakesProto.GameMessage msg) { //вызывается из network, не проверяю роли, с надеждой на правильность отправки
