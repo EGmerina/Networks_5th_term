@@ -82,17 +82,16 @@ public class UnicastService {
     }
 
 
-    public void send(SnakesProto.GameMessage msg, InetAddress address, int port) {
+    public void send(SnakesProto.GameMessage msg, SocketAddress address) {
         try {
             byte[] data = msg.toByteArray();
 
-            DatagramPacket packet = new DatagramPacket(data, data.length, address, port);
-
+            DatagramPacket packet = new DatagramPacket(data, data.length, address);
             socket.send(packet);
-            logger.trace("Sent message type {} to {}:{}", msg.getTypeCase(), address, port);
+            logger.trace("Sent message type {} to {}:{}", msg.getTypeCase(), address);
 
         } catch (IOException e) {
-            logger.error("Failed to send message to " + address + ":" + port, e);
+            logger.error("Failed to send message to " + address, e);
         }
     }
 

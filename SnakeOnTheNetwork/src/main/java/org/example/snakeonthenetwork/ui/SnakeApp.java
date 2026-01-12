@@ -42,6 +42,7 @@ public class SnakeApp extends Application {
 
             primaryStage.setScene(new Scene(root));
             primaryStage.show();
+            mainController.sendDiscover();
         } catch (IOException e) {
             e.printStackTrace();
         }
