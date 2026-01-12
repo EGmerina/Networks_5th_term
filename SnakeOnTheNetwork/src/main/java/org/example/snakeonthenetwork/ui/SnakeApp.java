@@ -7,6 +7,8 @@ import javafx.scene.Scene;
 import javafx.stage.Stage;
 import javafx.stage.Window;
 import me.ippolitov.fit.snakes.SnakesProto;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.example.snakeonthenetwork.controller.MainController;
 
 import java.io.IOException;
@@ -15,7 +17,8 @@ import java.util.HashMap;
 import java.util.List;
 
 public class SnakeApp extends Application {
-    private static final long TIME_TO_UPDATE = 1000;
+    private static final Logger logger = LogManager.getLogger(SnakeApp.class);
+    private static final long TIME_TO_UPDATE = 5000;
     private Stage primaryStage;
     private GameController gameController;
     private MenuController menuController;
@@ -60,8 +63,14 @@ public class SnakeApp extends Application {
             this.gameController = controller;
             this.menuController = null;
 
-            primaryStage.setScene(new Scene(root));
+            Scene gameScene = new Scene(root);
+
+            gameScene.setOnKeyPressed(event -> controller.handleKeyPressed(event));
+
+            primaryStage.setScene(gameScene);
             primaryStage.show();
+
+            root.requestFocus();
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -76,8 +85,8 @@ public class SnakeApp extends Application {
         showGame(config, name);
     }
 
-    public void joinGame(SnakesProto.GameAnnouncement announcement) {
-        mainController.joinGame(announcement);
+    public void joinGame(SnakesProto.GameAnnouncement announcement, String playerName, SnakesProto.NodeRole role) {
+        mainController.joinGame(announcement, playerName, role);
         showGame(announcement.getConfig(), announcement.getGameName());
     }
 
@@ -97,6 +106,7 @@ public class SnakeApp extends Application {
         if (menuController == null) {
             return;
         }
+        logger.trace(announcement);
         Long now = System.currentTimeMillis();
         availableGames.put(announcement.getGameName(), new DiscoveredGame(announcement, now));
         availableGames.values().removeIf(game -> (now - game.lastUpdateTime()) > TIME_TO_UPDATE);

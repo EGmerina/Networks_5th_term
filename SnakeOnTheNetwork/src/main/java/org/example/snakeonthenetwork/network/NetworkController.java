@@ -148,15 +148,17 @@ public class NetworkController {
 
 
     public void sendPing() {
-        if (System.currentTimeMillis() - lastSendTime.get() > resendDelayMs) {
-            SnakesProto.GameMessage msg = SnakesProto.GameMessage.newBuilder()
-                    .setMsgSeq(seqCounter.incrementAndGet())
-                    .setSenderId(controller.getMyId())
-                    .setPing(SnakesProto.GameMessage.PingMsg.newBuilder().build())
-                    .build();
-            unicastService.send(msg, playersAddresses.get(controller.getMasterId()));
-            lastSendTime.set(System.currentTimeMillis());
-        }
+        playersAddresses.forEach((playerId, address) -> {
+            if (System.currentTimeMillis() - lastSendTime.get() > resendDelayMs && playerId > 0) {
+                SnakesProto.GameMessage msg = SnakesProto.GameMessage.newBuilder()
+                        .setMsgSeq(seqCounter.incrementAndGet())
+                        .setSenderId(controller.getMyId())
+                        .setPing(SnakesProto.GameMessage.PingMsg.newBuilder().build())
+                        .build();
+                unicastService.send(msg, address);
+                lastSendTime.set(System.currentTimeMillis());
+            }
+        });
     }
 
     public void broadcastState(SnakesProto.GameState state) {
@@ -247,7 +249,7 @@ public class NetworkController {
             }
         }
 
-        if (message.hasSenderId()) {
+        if (message.hasSenderId() && (!message.hasAnnouncement() || !message.hasDiscover())) {
             receivedMessages.put(message.getSenderId(), message.getMsgSeq());
             playersAddresses.put(message.getSenderId(), senderAddr);
         }

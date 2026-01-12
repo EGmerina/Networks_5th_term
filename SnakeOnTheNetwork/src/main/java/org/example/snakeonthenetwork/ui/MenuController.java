@@ -82,7 +82,7 @@ public class MenuController {
             logger.info("Joining: " + selected);
             GameAnnouncement announcement = availableGames.get(selected);
             if (app != null && announcement.getCanJoin()) {
-                app.joinGame(announcement);
+                app.joinGame(announcement, "player", SnakesProto.NodeRole.NORMAL); //TODO сделать еще один конфиг
                 availableGames.clear();
             } else {
                 statusLabel.setText("too many players!");

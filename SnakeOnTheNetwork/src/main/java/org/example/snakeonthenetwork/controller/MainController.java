@@ -122,7 +122,7 @@ public class MainController {
             handleAck(msg);
             return;
         } else if (msg.hasAnnouncement()) {
-            app.handleAnnouncement(msg.getAnnouncement().getGames(0)); //вроде как один игрок аннонсирует только одну игру. TODO проверить индекс
+            app.handleAnnouncement(msg.getAnnouncement().getGamesList().getFirst()); //вроде как один игрок аннонсирует только одну игру. TODO проверить индекс
             return;
         } else if (msg.hasDiscover()) {
             network.broadcastAnnouncement(gameName, gameConfig, gameState);
@@ -154,7 +154,7 @@ public class MainController {
         } else if (msg.getRoleChange().getReceiverRole() == SnakesProto.NodeRole.DEPUTY) {
             deputyId = myId;
             myRole = SnakesProto.NodeRole.DEPUTY;
-           //TODO сменить gameState?
+            //TODO сменить gameState?
         } else if (msg.getRoleChange().getSenderRole() == SnakesProto.NodeRole.VIEWER) {
             removePlayer(msg.getSenderId());
         }
@@ -193,13 +193,16 @@ public class MainController {
     private void handleJoinRequest(SnakesProto.GameMessage msg) {
         SnakesProto.GameMessage.JoinMsg join = msg.getJoin();
 
-        int newPlayerId = engine.addPlayer(join.getPlayerName(), join.getRequestedRole());
+        int newPlayerId = engine.addPlayer(gameState, join.getPlayerName(), join.getRequestedRole());
 
         if (newPlayerId == -1) {
             network.sendError("No space or game full");
             return;
         }
         network.sendAck(msg.getMsgSeq(), newPlayerId);
+        if (deputyId == -1) {
+            assignNewDeputy();
+        }
     }
 
 
@@ -241,7 +244,7 @@ public class MainController {
     private void removePlayer(int playerId) {
         lastSeenNodes.remove(playerId);
         //делаем игрока viewer, пока его зомби-змейка не расшибется
-        this.gameState = engine.removePlayer(playerId); // TODO сделать thread-safe!!!!!
+        this.gameState = engine.removePlayer(gameState, playerId); // TODO сделать thread-safe!!!!!
     }
 
     private void assignNewDeputy() { //только для мастера
