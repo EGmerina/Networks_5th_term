@@ -1,58 +1,125 @@
 package org.example.snakeonthenetwork.network;
 
+import me.ippolitov.fit.snakes.SnakesProto;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import java.io.IOException;
+import java.net.*;
+import java.util.Arrays;
+import java.util.Enumeration;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+
 public class MulticastService {
+
+    private static final Logger logger = LogManager.getLogger(MulticastService.class);
+
+    private static final String MULTICAST_GROUP_IP = "239.192.0.4";
     private static final int MULTICAST_PORT = 9192;
-    private static final String MULTICAST_GROUP = "239.192.0.4";
+    private static final int BUFFER_SIZE = 65535; // Максимальный UDP пакет
+
+    private final NetworkController networkController;
+    private MulticastSocket socket;
+    private InetSocketAddress groupAddress;
 
 
-    private static final Logger logger = LogManager.getLogger(MulticastReceiver.class);
-    private final MulticastSocket socket;
-    private final InetSocketAddress groupAddress;
-    private final NetworkInterface netIf;
-    private final MainController mainController;
+    private final ExecutorService listenExecutor = Executors.newSingleThreadExecutor();
+    private Future<?> listenTask;
+
     public MulticastService(NetworkController networkController) {
+        this.networkController = networkController;
+        try {
+
+            this.socket = new MulticastSocket(MULTICAST_PORT);
+
+            this.groupAddress = new InetSocketAddress(MULTICAST_GROUP_IP, MULTICAST_PORT);
+
+            NetworkInterface netIf = chooseNetworkInterface();
+            socket.setNetworkInterface(netIf);
+            logger.info("Multicast service using interface: " + netIf.getName());
+            socket.joinGroup(groupAddress, socket.getNetworkInterface());
+            logger.info("Joined multicast group " + groupAddress);
+
+        } catch (IOException e) {
+            logger.error("Failed to create MulticastSocket", e);
+            throw new RuntimeException(e);
+        }
     }
 
     public void start() {
-        byte[] buffer = new byte[4096];
-
-        // Обязательно присоединяемся к группе перед началом цикла
-        try {
-            socket.joinGroup(groupAddress, netIf);
-            logger.info("Joined multicast group " + groupAddress);
-        } catch (IOException e) {
-            logger.error("Failed to join multicast group", e);
-            return;
-        }
-
-        while (!Thread.currentThread().isInterrupted()) {
+        listenTask = listenExecutor.submit(() -> {
             try {
-                DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-                socket.receive(packet); // Слушаем порт 9192
 
-                // Не обрабатываем свои же пакеты (по желанию)
-                // if (isMyPacket(packet)) continue;
+                byte[] buffer = new byte[BUFFER_SIZE];
 
-                byte[] data = Arrays.copyOf(packet.getData(), packet.getLength());
-                SnakesProto.GameMessage message = SnakesProto.GameMessage.parseFrom(data);
+                while (!Thread.currentThread().isInterrupted()) {
+                    DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
 
-                // Анонсы передаем в контроллер
-                mainController.onMessageReceived(message, packet.getAddress(), packet.getPort());
+                    socket.receive(packet);
 
+
+                    byte[] data = Arrays.copyOf(packet.getData(), packet.getLength());
+                    SnakesProto.GameMessage message = SnakesProto.GameMessage.parseFrom(data);
+
+                    logger.debug("Received multicast from {}:{} type={}",
+                            packet.getAddress(), packet.getPort(), message.getTypeCase());
+
+                    networkController.handleMessage(message, packet.getAddress(), packet.getPort());
+                }
+
+            } catch (SocketException e) {
+                logger.info("Multicast socket closed.");
             } catch (IOException e) {
-                if (socket.isClosed()) break;
-                logger.error("Error receiving multicast packet", e);
+                logger.error("Error in multicast loop", e);
             }
-        }
-
-        // Выходим из группы при остановке
-        try {
-            socket.leaveGroup(groupAddress, netIf);
-        } catch (IOException e) {
-            logger.error("Error leaving group", e);
-        }
+        });
     }
 
     public void stop() {
+        if (listenTask != null) {
+            listenTask.cancel(true);
+        }
+        if (socket != null && !socket.isClosed()) {
+            try {
+                socket.leaveGroup(groupAddress, socket.getNetworkInterface());
+            } catch (IOException e) {
+                logger.error("Error leaving group", e);
+            }
+            socket.close();
+        }
+        listenExecutor.shutdownNow();
+        logger.info("MulticastService stopped.");
+    }
+
+
+    public void send(SnakesProto.GameMessage msg) {
+        try {
+            byte[] data = msg.toByteArray();
+
+            DatagramPacket packet = new DatagramPacket(data, data.length, groupAddress);
+            socket.send(packet);
+            logger.trace("Sent multicast message: " + msg.getTypeCase());
+
+        } catch (IOException e) {
+            logger.error("Failed to send multicast message", e);
+        }
+    }
+
+
+    private NetworkInterface chooseNetworkInterface() throws SocketException {
+        Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+        while (interfaces.hasMoreElements()) {
+            NetworkInterface netIf = interfaces.nextElement();
+
+            if (!netIf.isUp() || netIf.isLoopback()) continue;
+
+            if (netIf.supportsMulticast()) {
+                return netIf;
+            }
+        }
+        // Если ничего не нашли, возвращаем любой
+        return NetworkInterface.getNetworkInterfaces().nextElement();
     }
 }

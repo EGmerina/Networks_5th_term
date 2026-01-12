@@ -131,4 +131,7 @@ public class NetworkController {
     }
 
 
+
+    public void handleMessage(SnakesProto.GameMessage message, InetAddress address, int port) {
+    }
 }

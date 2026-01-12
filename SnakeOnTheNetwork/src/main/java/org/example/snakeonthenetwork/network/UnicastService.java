@@ -1,46 +1,103 @@
 package org.example.snakeonthenetwork.network;
 
 import me.ippolitov.fit.snakes.SnakesProto;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import java.io.IOException;
+import java.net.*;
+import java.util.Arrays;
+import java.util.concurrent.ExecutorService; // Лучше использовать обычный Executor для бесконечного цикла
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 public class UnicastService {
 
-    private static final Logger logger = LogManager.getLogger(UnicastReceiver.class);
+    private static final Logger logger = LogManager.getLogger(UnicastService.class);
+
     private final DatagramSocket socket;
-    private final MainController mainController;
+    private final NetworkController networkController;
+
+    private final ExecutorService listenExecutor = Executors.newSingleThreadExecutor();
+    private Future<?> listenTask;
+
+    private static final int BUFFER_SIZE = 65535;
+
     public UnicastService(NetworkController networkController) {
-    }
-
-    public void start() {
-        // Буфер можно взять побольше, чтобы вместить GameState
-        byte[] buffer = new byte[4096];
-
-        while (!Thread.currentThread().isInterrupted()) {
-            try {
-                DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-                socket.receive(packet); // Блокируется, пока не придут данные
-
-                // Обрезаем буфер до реального размера полученных данных
-                byte[] data = Arrays.copyOf(packet.getData(), packet.getLength());
-
-                // Парсим Protobuf
-                SnakesProto.GameMessage message = SnakesProto.GameMessage.parseFrom(data);
-
-                // Передаем в контроллер (важно передать IP и порт отправителя!)
-                mainController.onMessageReceived(message, packet.getAddress(), packet.getPort());
-
-            } catch (IOException e) {
-                if (socket.isClosed()) {
-                    logger.info("Unicast socket closed, stopping thread.");
-                    break;
-                }
-                logger.error("Error receiving unicast packet", e);
-            }
+        this.networkController = networkController;
+        try {
+            this.socket = new DatagramSocket();
+            logger.info("Unicast socket started on port: " + socket.getLocalPort());
+        } catch (SocketException e) {
+            logger.error("Can't create datagram socket", e);
+            throw new RuntimeException(e);
         }
     }
 
-    public void stop() {
+    public void start() {
+        listenTask = listenExecutor.submit(() -> {
+            logger.info("Unicast receiver thread started.");
+
+            byte[] buffer = new byte[BUFFER_SIZE];
+
+            while (!Thread.currentThread().isInterrupted()) {
+                try {
+                    DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+
+                    socket.receive(packet);
+
+                    byte[] data = Arrays.copyOf(packet.getData(), packet.getLength());
+
+                    SnakesProto.GameMessage message = SnakesProto.GameMessage.parseFrom(data);
+
+                    logger.debug("Received packet from {}:{} seq={}",
+                            packet.getAddress(), packet.getPort(), message.getMsgSeq());
+
+
+                    networkController.handleMessage(message, packet.getAddress(), packet.getPort());
+
+                } catch (SocketException e) {
+                    logger.info("Socket closed, stopping receiver thread.");
+                    break;
+                } catch (IOException e) {
+                    logger.error("Error receiving packet", e);
+                } catch (Exception e) {
+                    logger.error("Error parsing or handling message", e);
+                }
+            }
+        });
     }
 
-    public void send(SnakesProto.GameMessage msg) {
+    public void stop() {
+        if (listenTask != null) {
+            listenTask.cancel(true);
+        }
+
+        if (socket != null && !socket.isClosed()) {
+            socket.close();
+        }
+
+        listenExecutor.shutdownNow();
+        logger.info("UnicastService stopped.");
+    }
+
+
+    public void send(SnakesProto.GameMessage msg, InetAddress address, int port) {
+        try {
+            byte[] data = msg.toByteArray();
+
+            DatagramPacket packet = new DatagramPacket(data, data.length, address, port);
+
+            socket.send(packet);
+            logger.trace("Sent message type {} to {}:{}", msg.getTypeCase(), address, port);
+
+        } catch (IOException e) {
+            logger.error("Failed to send message to " + address + ":" + port, e);
+        }
+    }
+
+
+    public int getPort() {
+        return socket.getLocalPort();
     }
 }
