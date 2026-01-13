@@ -136,7 +136,6 @@ public class MainController {
         } else if (msg.hasPing()) { //время обновилось
 
         } else if (msg.hasSteer()) {
-            logger.debug("RECEIVE STEER {} from {}", msg.getSteer().getDirection(), msg.getSenderId());
             movesBuffer.put(msg.getSenderId(), msg.getSteer().getDirection());
         } else if (msg.hasJoin()) {
             handleJoinRequest(msg);
@@ -321,7 +320,6 @@ public class MainController {
 
     public void sendSteer(SnakesProto.Direction direction) {
         if (myRole != SnakesProto.NodeRole.MASTER && movesBuffer.get(myId) != direction) {
-            logger.trace("Sending steer.... last dir {}, cur dir {}", movesBuffer.get(myId), direction);
             network.sendSteer(direction);
         }
         //TODo возможно стоит убрать myRole и оставить только myId
@@ -339,6 +337,12 @@ public class MainController {
 
     public void sendDiscover() {
         network.sendDiscover();
+    }
+
+    public void closeGame() {
+        stopAllTasks();
+        gameScheduler.shutdownNow();
+        network.stop();
     }
 }
 

@@ -275,9 +275,7 @@ public class NetworkController {
         logger.debug("Received message : {} from {}", message.getTypeCase(), message.getSenderId());
 
         if (message.hasSenderId() && (isDuplicate(message.getSenderId(), message.getMsgSeq()) || message.getSenderId() == controller.getMyId())) {
-            if (message.hasSteer()) {
-                logger.debug("Ignore steer : dup {}, my_mes {}, has_send {}!!!!!!!!!!!", isDuplicate(message.getSenderId(), message.getMsgSeq()), message.getSenderId() == controller.getMyId(), message.hasSenderId());
-            }
+            //TODo все еще может игронироваться что-то
             return;
         }
 

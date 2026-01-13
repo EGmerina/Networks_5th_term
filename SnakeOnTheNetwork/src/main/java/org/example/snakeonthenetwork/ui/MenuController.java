@@ -21,7 +21,7 @@ import java.util.HashMap;
 public class MenuController {
     private static final Logger logger = LogManager.getLogger(MenuController.class);
     private final HashMap<String, GameAnnouncement> availableGames = new HashMap<>(); //предполагается что не будет 300500 игр одновремено
-
+    //TODO проверятьь на одинаковые имена
     @FXML
     private ListView<String> gamesList; // Храним строки или объекты игр
     @FXML
@@ -67,8 +67,9 @@ public class MenuController {
             dialogStage.setTitle("New Game Settings");
             dialogStage.initModality(Modality.WINDOW_MODAL); // Блокирует главное окно
             dialogStage.initOwner(app.getPrimaryStage());
-            dialogStage.setScene(new Scene(root));
-
+            // ЯВНО ЗАДАЕМ РАЗМЕР
+            dialogStage.setScene(new Scene(root, 500, 400));
+            dialogStage.setResizable(false);
             // Настраиваем контроллер
             ConfigController controller = loader.getController();
             controller.setApp(app, dialogStage);

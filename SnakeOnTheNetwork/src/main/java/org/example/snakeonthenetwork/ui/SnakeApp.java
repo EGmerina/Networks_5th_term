@@ -126,4 +126,13 @@ public class SnakeApp extends Application {
         showMenu();
         menuController.showError(s);
     }
+
+    @Override
+    public void stop() throws Exception {
+        if (mainController != null) {
+            mainController.closeGame();
+        }
+        super.stop();
+        System.exit(0);
+    }
 }
