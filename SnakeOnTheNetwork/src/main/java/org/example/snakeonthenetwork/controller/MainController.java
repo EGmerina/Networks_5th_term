@@ -210,10 +210,12 @@ public class MainController {
 
         int newPlayerId = engine.addPlayer(gameState, join.getPlayerName(), join.getRequestedRole());
 
+
         if (newPlayerId == -1) {
             network.sendError("No space or game full");
             return;
         }
+        network.registerPlayer(newPlayerId);
         network.sendAck(msg.getMsgSeq(), newPlayerId);
         if (deputyId == -1) {
             assignNewDeputy();
@@ -317,11 +319,12 @@ public class MainController {
     }
 
     public void sendSteer(SnakesProto.Direction direction) {
-        if (myRole == SnakesProto.NodeRole.MASTER) { //TODo возможно стоит убрать myRole и оставить только myId
-            movesBuffer.put(myId, direction);
-        } else {
+        if (myRole != SnakesProto.NodeRole.MASTER && movesBuffer.get(myId) != direction) {
             network.sendSteer(direction);
         }
+        //TODo возможно стоит убрать myRole и оставить только myId
+        movesBuffer.put(myId, direction);
+
     }
 
     public int getMyId() {

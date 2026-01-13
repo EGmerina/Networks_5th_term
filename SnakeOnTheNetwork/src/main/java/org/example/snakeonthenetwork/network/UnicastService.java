@@ -86,9 +86,11 @@ public class UnicastService {
     public void send(SnakesProto.GameMessage msg, SocketAddress address) {
         try {
             byte[] data = msg.toByteArray();
-
-            DatagramPacket packet = new DatagramPacket(data, data.length, address);
+            if(address == null){
+                logger.error("ADDRESS IS NULL!!!!!!!!!!!!!!!!");
+            }
             logger.trace("Sent message type {} to {}", msg.getTypeCase(), address);
+            DatagramPacket packet = new DatagramPacket(data, data.length, address);
             socket.send(packet);
 
         } catch (IOException e) {

@@ -26,9 +26,14 @@ public class NetworkController {
     private final AtomicLong seqCounter = new AtomicLong(0);
     private final Map<Long, UnconfirmedMessage> unconfirmedMessages = new ConcurrentHashMap<>();
     private final Map<Integer, Long> receivedMessages = new ConcurrentHashMap<>(); //для проверки повторных пакетов
-    private final Map<Integer, InetSocketAddress> playersAddresses = new ConcurrentHashMap<>(); // 0 - для того кто отправит join
+    private final Map<Integer, InetSocketAddress> playersAddresses = new ConcurrentHashMap<>(); // 0 - для того кто отправит join (новый, неподтвержденный игрок)
 
     private AtomicLong lastSendTime = new AtomicLong(0);
+
+    public void registerPlayer(int newPlayerId) {
+        InetSocketAddress address = playersAddresses.remove(0);
+        playersAddresses.put(newPlayerId, address);
+    }
 
 
     private record UnconfirmedMessage(SnakesProto.GameMessage message, SocketAddress address) {
@@ -52,7 +57,6 @@ public class NetworkController {
         }
         resendTask = resendTimer.scheduleAtFixedRate(() -> {
             unconfirmedMessages.forEach((seq, umsg) -> {
-                if (umsg.message == null) return;
                 unicastService.send(umsg.message, umsg.address);
             });
         }, 0, resendDelayMs, TimeUnit.MILLISECONDS);
@@ -115,6 +119,7 @@ public class NetworkController {
 
         SnakesProto.GameMessage msg = SnakesProto.GameMessage.newBuilder()
                 .setMsgSeq(seq)
+                .setSenderId(0)
                 .setJoin(join)
                 .build();
 
@@ -145,7 +150,7 @@ public class NetworkController {
                 .setReceiverId(recId)
                 .setRoleChange(roleChange)
                 .build();
-        unicastService.send(msg, playersAddresses.get(recId));
+        sendUnicastReliably(msg, playersAddresses.get(recId));
         lastSendTime.set(System.currentTimeMillis());
     }
 
@@ -225,7 +230,7 @@ public class NetworkController {
 
     private void broadcast(SnakesProto.GameMessage msg) {
         playersAddresses.forEach((ind, addr) -> {
-            unicastService.send(msg, addr);
+            sendUnicastReliably(msg, addr);
         });
     }
 
@@ -241,7 +246,7 @@ public class NetworkController {
     public void handleMessage(SnakesProto.GameMessage message, InetAddress ip, int port) {
         InetSocketAddress senderAddr = new InetSocketAddress(ip, port);
 
-        logger.debug("Received message : {}", message.getTypeCase());
+        logger.debug("Received message : {} from {}", message.getTypeCase(), message.getSenderId());
 
         if (message.hasSenderId() && isDuplicate(message.getSenderId(), message.getMsgSeq())) {
             return;
@@ -249,14 +254,30 @@ public class NetworkController {
 
         if (message.hasAck()) {
             UnconfirmedMessage removed = unconfirmedMessages.remove(message.getMsgSeq());
-            if (removed.message == null) {
-                unconfirmedMessages.put(message.getMsgSeq(), null);
+            if (removed == null) {
+                logger.trace("Ack for unknown or already confirmed message: {}", message.getMsgSeq());
             }
         }
 
-        if (message.hasSenderId() && (!message.hasAnnouncement() || !message.hasDiscover())) {
+        if (message.hasSenderId() && !message.hasDiscover()) {
             receivedMessages.put(message.getSenderId(), message.getMsgSeq());
-            playersAddresses.put(message.getSenderId(), senderAddr);
+            if (message.hasAnnouncement()) {
+                int masterPort = -1;
+                SnakesProto.GameAnnouncement announcement = message.getAnnouncement().getGamesList().getFirst();
+                for (SnakesProto.GamePlayer player : announcement.getPlayers().getPlayersList()) {
+                    if (player.getRole() == SnakesProto.NodeRole.MASTER) {
+                        masterPort = player.getPort();
+                    }
+                }
+                if (masterPort == -1) {
+                    logger.error("No master in game {}", announcement.getGameName());
+                    return;
+                }
+                playersAddresses.put(message.getSenderId(), new InetSocketAddress(senderAddr.getAddress(), masterPort));
+            } else {
+                playersAddresses.put(message.getSenderId(), senderAddr);
+            }
+
         }
 
         controller.onMessageReceived(message);
