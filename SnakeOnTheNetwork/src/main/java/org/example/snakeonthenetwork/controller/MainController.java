@@ -136,6 +136,7 @@ public class MainController {
         } else if (msg.hasPing()) { //время обновилось
 
         } else if (msg.hasSteer()) {
+            logger.debug("RECEIVE STEER {} from {}", msg.getSteer().getDirection(), msg.getSenderId());
             movesBuffer.put(msg.getSenderId(), msg.getSteer().getDirection());
         } else if (msg.hasJoin()) {
             handleJoinRequest(msg);
@@ -208,9 +209,9 @@ public class MainController {
     private void handleJoinRequest(SnakesProto.GameMessage msg) {
         SnakesProto.GameMessage.JoinMsg join = msg.getJoin();
 
-        int newPlayerId = engine.addPlayer(gameState, join.getPlayerName(), join.getRequestedRole());
-
-
+        GameEngine.PlayerIdAndState playerIdAndState = engine.addPlayer(gameState, join.getPlayerName(), join.getRequestedRole()); //TODO возможно надо пробрасывать адрес (если сменится мастер?)
+        int newPlayerId = playerIdAndState.playerId();
+        gameState = playerIdAndState.newState();
         if (newPlayerId == -1) {
             network.sendError("No space or game full");
             return;
@@ -320,6 +321,7 @@ public class MainController {
 
     public void sendSteer(SnakesProto.Direction direction) {
         if (myRole != SnakesProto.NodeRole.MASTER && movesBuffer.get(myId) != direction) {
+            logger.trace("Sending steer.... last dir {}, cur dir {}", movesBuffer.get(myId), direction);
             network.sendSteer(direction);
         }
         //TODo возможно стоит убрать myRole и оставить только myId

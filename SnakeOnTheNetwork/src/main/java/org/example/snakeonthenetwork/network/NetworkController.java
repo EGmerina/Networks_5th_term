@@ -86,12 +86,17 @@ public class NetworkController {
     }
 
     public void sendSteer(SnakesProto.Direction dir) {
+        logger.debug("Sending steer : {}", dir);
         SnakesProto.GameMessage msg = SnakesProto.GameMessage.newBuilder()
                 .setMsgSeq(seqCounter.incrementAndGet())
                 .setSenderId(controller.getMyId())
                 .setReceiverId(controller.getMasterId())
                 .setSteer(SnakesProto.GameMessage.SteerMsg.newBuilder().setDirection(dir).build())
                 .build();
+
+        unconfirmedMessages.entrySet().removeIf(entry ->
+                entry.getValue().message.hasSteer()
+        ); //TODO нужно ли ? (удаление старых steer)
         sendUnicastReliably(msg, playersAddresses.get(controller.getMasterId()));
         lastSendTime.set(System.currentTimeMillis());
     }
@@ -264,11 +269,15 @@ public class NetworkController {
 
 
     public void handleMessage(SnakesProto.GameMessage message, InetAddress ip, int port) {
+
         InetSocketAddress senderAddr = new InetSocketAddress(ip, port);
 
         logger.debug("Received message : {} from {}", message.getTypeCase(), message.getSenderId());
 
-        if (message.hasSenderId() && isDuplicate(message.getSenderId(), message.getMsgSeq())) {
+        if (message.hasSenderId() && (isDuplicate(message.getSenderId(), message.getMsgSeq()) || message.getSenderId() == controller.getMyId())) {
+            if (message.hasSteer()) {
+                logger.debug("Ignore steer : dup {}, my_mes {}, has_send {}!!!!!!!!!!!", isDuplicate(message.getSenderId(), message.getMsgSeq()), message.getSenderId() == controller.getMyId(), message.hasSenderId());
+            }
             return;
         }
 
@@ -279,7 +288,7 @@ public class NetworkController {
             }
         }
 
-        if (message.hasSenderId() && !message.hasDiscover()) {
+        if (message.hasSenderId() && !message.hasDiscover() && !message.hasAck() && !message.hasPing()) {
             receivedMessages.put(message.getSenderId(), message.getMsgSeq());
             if (message.hasAnnouncement()) {
                 int masterPort = -1;

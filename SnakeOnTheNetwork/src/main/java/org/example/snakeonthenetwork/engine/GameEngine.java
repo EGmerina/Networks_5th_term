@@ -122,30 +122,26 @@ public class GameEngine {
     // 3. УПРАВЛЕНИЕ ИГРОКАМИ (ADD / REMOVE)
     // =========================================================================
 
-    /**
-     * Пытается добавить игрока.
-     * Возвращает НОВЫЙ GameState, если удалось.
-     * Возвращает СТАРЫЙ GameState, если места нет.
-     */
-    public int addPlayer(SnakesProto.GameState currentState, String name, SnakesProto.NodeRole role) {
+    public record PlayerIdAndState(SnakesProto.GameState newState, int playerId, String error) {}
+
+    // Изменяем сигнатуру метода
+    public PlayerIdAndState addPlayer(SnakesProto.GameState currentState, String name, SnakesProto.NodeRole role) {
         int width = config.getWidth();
         int height = config.getHeight();
 
-        // 1. Ищем свободное место (попытки найти квадрат 5x5)
         SnakesProto.GameState.Coord headCoord = findFreeSquare(currentState, 5);
 
         if (headCoord == null) {
-            return -1; // Места нет, возвращаем как было
+            // Возвращаем старый стейт и ошибку -1
+            return new PlayerIdAndState(currentState, -1, "No space for new snake");
         }
 
-        // 2. Вычисляем новый ID (max + 1)
         int maxId = 0;
         for (var p : currentState.getPlayers().getPlayersList()) {
             if (p.getId() > maxId) maxId = p.getId();
         }
         int newId = maxId + 1;
 
-        // 3. Создаем игрока
         SnakesProto.GamePlayer newPlayer = SnakesProto.GamePlayer.newBuilder()
                 .setName(name)
                 .setId(newId)
@@ -156,16 +152,15 @@ public class GameEngine {
                 .setPort(0)
                 .build();
 
-        // 4. Создаем змею
         SnakesProto.GameState.Snake newSnake = createSnake(newId, headCoord.getX(), headCoord.getY());
 
         SnakesProto.GameState newState = currentState.toBuilder()
                 .setPlayers(currentState.getPlayers().toBuilder().addPlayers(newPlayer))
                 .addSnakes(newSnake)
                 .build();
-        currentState = newState;
 
-        return newId;
+        // ВОЗВРАЩАЕМ НОВЫЙ СТЕЙТ
+        return new PlayerIdAndState(newState, newId, null);
     }
 
     public SnakesProto.GameState removePlayer(SnakesProto.GameState currentState, int playerId) {

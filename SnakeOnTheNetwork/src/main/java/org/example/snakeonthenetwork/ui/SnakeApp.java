@@ -4,6 +4,7 @@ import javafx.application.Application;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
+import javafx.scene.input.KeyEvent;
 import javafx.stage.Stage;
 import javafx.stage.Window;
 import me.ippolitov.fit.snakes.SnakesProto;
@@ -65,7 +66,7 @@ public class SnakeApp extends Application {
 
             Scene gameScene = new Scene(root);
 
-            gameScene.setOnKeyPressed(event -> controller.handleKeyPressed(event));
+            gameScene.addEventFilter(KeyEvent.KEY_PRESSED, event -> controller.handleKeyPressed(event));
 
             primaryStage.setScene(gameScene);
             primaryStage.show();

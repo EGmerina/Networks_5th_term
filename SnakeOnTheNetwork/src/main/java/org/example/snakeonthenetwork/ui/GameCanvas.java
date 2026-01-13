@@ -43,7 +43,7 @@ public class GameCanvas {
 
         for (SnakesProto.GameState.Snake snake : state.getSnakesList()) {
 
-            gc.setFill(snake.getPlayerId() == app.getMyId() ? Color.GREEN : colorsForOtherPlayers[random.nextInt(colorsForOtherPlayers.length)]);
+            gc.setFill(snake.getPlayerId() == app.getMyId() ? Color.GREEN : colorsForOtherPlayers[snake.getPlayerId() % colorsForOtherPlayers.length]);
 
             int x = 0;
             int y = 0;
