@@ -28,7 +28,7 @@ public class NetworkController {
     private final Map<Integer, Long> receivedMessages = new ConcurrentHashMap<>(); //для проверки повторных пакетов
     private final Map<Integer, InetSocketAddress> playersAddresses = new ConcurrentHashMap<>(); // 0 - для того кто отправит join (новый, неподтвержденный игрок)
 
-    private AtomicLong lastSendTime = new AtomicLong(0);
+    private AtomicLong lastSendTime = new AtomicLong(0); // в целом
 
     public void registerPlayer(int newPlayerId) {
         InetSocketAddress address = playersAddresses.remove(0);
@@ -36,7 +36,16 @@ public class NetworkController {
     }
 
 
-    private record UnconfirmedMessage(SnakesProto.GameMessage message, SocketAddress address) {
+    private static class UnconfirmedMessage {
+        final SnakesProto.GameMessage message;
+        final SocketAddress address;
+        long sendTime; // ВАЖНО: здесь НЕТ слова final
+
+        public UnconfirmedMessage(SnakesProto.GameMessage message, SocketAddress address, long sendTime) {
+            this.message = message;
+            this.address = address;
+            this.sendTime = sendTime;
+        }
     }
 
     public NetworkController(MainController mainController) {
@@ -56,11 +65,16 @@ public class NetworkController {
             resendTask.cancel(true);
         }
         resendTask = resendTimer.scheduleAtFixedRate(() -> {
+            long now = System.currentTimeMillis();
             unconfirmedMessages.forEach((seq, umsg) -> {
-                unicastService.send(umsg.message, umsg.address);
+                if (now - umsg.sendTime > resendDelayMs) {
+                    unicastService.send(umsg.message, umsg.address);
+                    umsg.sendTime = now;
+                }
             });
         }, 0, resendDelayMs, TimeUnit.MILLISECONDS);
     }
+
 
     public void stop() {
         multicastService.stop();
@@ -176,11 +190,17 @@ public class NetworkController {
                 .setState(SnakesProto.GameMessage.StateMsg.newBuilder().setState(state).build())
                 .build();
 
+
+        unconfirmedMessages.entrySet().removeIf(entry ->
+                entry.getValue().message.hasState()
+        ); //TODO нужно ли ? (удаление старых state)
+
         broadcast(msg);
         lastSendTime.set(System.currentTimeMillis());
     }
 
-    public void broadcastAnnouncement(String gameName, SnakesProto.GameConfig gameConfig, SnakesProto.GameState gameState) {
+    public void broadcastAnnouncement(String gameName, SnakesProto.GameConfig gameConfig, SnakesProto.GameState
+            gameState) {
         SnakesProto.GameAnnouncement announcement = SnakesProto.GameAnnouncement.newBuilder()
                 .setGameName(gameName)
                 .setConfig(gameConfig)
@@ -224,7 +244,7 @@ public class NetworkController {
 
     private void sendUnicastReliably(SnakesProto.GameMessage msg, InetSocketAddress address) {
         unicastService.send(msg, address);
-        unconfirmedMessages.put(msg.getMsgSeq(), new UnconfirmedMessage(msg, address));
+        unconfirmedMessages.put(msg.getMsgSeq(), new UnconfirmedMessage(msg, address, System.currentTimeMillis()));
     }
 
 
