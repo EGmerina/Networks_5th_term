@@ -104,6 +104,9 @@ public class NetworkController {
             return -1;
         }
 
+        playersAddresses.put(master.getId(), new InetSocketAddress(master.getIpAddress(), master.getPort()));
+        logger.debug("Master address  {}:{}", master.getIpAddress(), master.getPort());
+
         SnakesProto.GameMessage.JoinMsg join = SnakesProto.GameMessage.JoinMsg.newBuilder()
                 .setGameName(announcement.getGameName())
                 .setPlayerName(playerName)
@@ -238,6 +241,8 @@ public class NetworkController {
     public void handleMessage(SnakesProto.GameMessage message, InetAddress ip, int port) {
         InetSocketAddress senderAddr = new InetSocketAddress(ip, port);
 
+        logger.debug("Received message : {}", message.getTypeCase());
+
         if (message.hasSenderId() && isDuplicate(message.getSenderId(), message.getMsgSeq())) {
             return;
         }
@@ -262,5 +267,13 @@ public class NetworkController {
             return false;
         }
         return true;
+    }
+
+    public InetSocketAddress getPlayerAddress(int playerId) {
+        return playersAddresses.get(playerId);
+    }
+
+    public int getUnicastPort() {
+        return unicastService.getPort();
     }
 }

@@ -1,5 +1,6 @@
 package org.example.snakeonthenetwork.network;
 
+import com.google.protobuf.InvalidProtocolBufferException;
 import me.ippolitov.fit.snakes.SnakesProto;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -62,7 +63,7 @@ public class UnicastService {
                 } catch (IOException e) {
                     logger.error("Error receiving packet", e);
                 } catch (Exception e) {
-                    logger.error("Error parsing or handling message", e);
+                    logger.error("Unknown error", e);
                 }
             }
         });
@@ -87,8 +88,8 @@ public class UnicastService {
             byte[] data = msg.toByteArray();
 
             DatagramPacket packet = new DatagramPacket(data, data.length, address);
+            logger.trace("Sent message type {} to {}", msg.getTypeCase(), address);
             socket.send(packet);
-            logger.trace("Sent message type {} to {}:{}", msg.getTypeCase(), address);
 
         } catch (IOException e) {
             logger.error("Failed to send message to " + address, e);

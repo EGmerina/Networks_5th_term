@@ -106,7 +106,6 @@ public class SnakeApp extends Application {
         if (menuController == null) {
             return;
         }
-        logger.trace(announcement);
         Long now = System.currentTimeMillis();
         availableGames.put(announcement.getGameName(), new DiscoveredGame(announcement, now));
         availableGames.values().removeIf(game -> (now - game.lastUpdateTime()) > TIME_TO_UPDATE);

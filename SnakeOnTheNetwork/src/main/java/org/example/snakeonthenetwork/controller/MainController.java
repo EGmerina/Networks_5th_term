@@ -8,7 +8,7 @@ import org.example.snakeonthenetwork.ui.SnakeApp;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.util.Map;
 import java.util.concurrent.*;
 
@@ -60,7 +60,7 @@ public class MainController {
         this.masterId = myId;
 
         this.engine = new GameEngine(config);
-        this.gameState = engine.createInitialState(playerName);
+        this.gameState = engine.createInitialState(playerName, network.getUnicastPort());
 
         network.updateStateDelay(gameConfig.getStateDelayMs());
         startGameLoop();
@@ -110,7 +110,6 @@ public class MainController {
         this.gameName = announcement.getGameName();
         this.myRole = role;
 
-        //  this.lastJoinMsgSeq = network.getNextSeq();
         network.updateStateDelay(gameConfig.getStateDelayMs());
 
         lastJoinMsgSeq = network.sendJoin(announcement, playerName, myRole);
@@ -122,10 +121,12 @@ public class MainController {
             handleAck(msg);
             return;
         } else if (msg.hasAnnouncement()) {
-            app.handleAnnouncement(msg.getAnnouncement().getGamesList().getFirst()); //вроде как один игрок аннонсирует только одну игру. TODO проверить индекс
+            handleAnnouncement(msg);
             return;
         } else if (msg.hasDiscover()) {
-            network.broadcastAnnouncement(gameName, gameConfig, gameState);
+            if (myRole == SnakesProto.NodeRole.MASTER) {
+                network.broadcastAnnouncement(gameName, gameConfig, gameState);
+            }
             return;
         } else if (msg.hasState()) {
             handleState(msg);
@@ -146,6 +147,20 @@ public class MainController {
             return;
         }
         network.sendAck(msg.getMsgSeq(), msg.getSenderId());
+    }
+
+    private void handleAnnouncement(SnakesProto.GameMessage msg) {
+        SnakesProto.GameAnnouncement announcement = msg.getAnnouncement().getGamesList().getFirst();
+        if (announcement.getPlayers().getPlayersCount() == 1) {
+            InetSocketAddress addresAndPort = network.getPlayerAddress(1);
+            var announcementBuilder = announcement.toBuilder();
+            announcementBuilder.getPlayersBuilder()
+                    .getPlayersBuilder(0)
+                    .setIpAddress(addresAndPort.getAddress().getHostAddress());
+
+            announcement = announcementBuilder.build();
+        }
+        app.handleAnnouncement(announcement);
     }
 
     private void handleRoleChange(SnakesProto.GameMessage msg) {

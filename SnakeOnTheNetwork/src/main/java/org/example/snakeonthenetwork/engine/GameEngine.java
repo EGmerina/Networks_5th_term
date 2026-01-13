@@ -16,7 +16,7 @@ public class GameEngine {
     // =========================================================================
     // 1. СОЗДАНИЕ НАЧАЛЬНОГО СОСТОЯНИЯ (ДЛЯ МАСТЕРА)
     // =========================================================================
-    public SnakesProto.GameState createInitialState(String masterName) {
+    public SnakesProto.GameState createInitialState(String masterName, int unicastPort) {
         int width = config.getWidth();
         int height = config.getHeight();
 
@@ -25,7 +25,7 @@ public class GameEngine {
                 .setName(masterName)
                 .setId(1)
                 .setIpAddress("") // Заполнится сетевым модулем позже
-                .setPort(0)
+                .setPort(unicastPort)
                 .setRole(SnakesProto.NodeRole.MASTER)
                 .setType(SnakesProto.PlayerType.HUMAN)
                 .setScore(0)

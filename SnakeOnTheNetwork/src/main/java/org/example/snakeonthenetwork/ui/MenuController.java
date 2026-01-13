@@ -35,6 +35,7 @@ public class MenuController {
 
     public void updateGameList(Collection<DiscoveredGame> games) {
         Platform.runLater(() -> {
+            String selectedItem = gamesList.getSelectionModel().getSelectedItem();
             gamesList.getItems().clear();
 
             for (DiscoveredGame dgame : games) {
@@ -46,6 +47,10 @@ public class MenuController {
                     gamesList.getItems().add(gameInfo);
                     availableGames.put(gameInfo, game);
                 }
+            }
+
+            if (selectedItem != null && gamesList.getItems().contains(selectedItem)) {
+                gamesList.getSelectionModel().select(selectedItem);
             }
         });
     }
