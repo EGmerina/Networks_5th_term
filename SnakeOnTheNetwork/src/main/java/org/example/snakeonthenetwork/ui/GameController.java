@@ -8,6 +8,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.StackPane;
 import javafx.scene.paint.Color;
 import me.ippolitov.fit.snakes.SnakesProto.*;
 
@@ -25,8 +26,18 @@ public class GameController {
     private ListView<String> scoreList;
     @FXML
     private BorderPane rootPane;
+    @FXML
+    private StackPane canvasContainer;
 
     private SnakeApp app;
+
+    @FXML
+    public void initialize() {
+
+        canvas.widthProperty().bind(canvasContainer.widthProperty());
+        canvas.heightProperty().bind(canvasContainer.heightProperty());
+
+    }
 
     public void setApp(SnakeApp app) {
         this.app = app;
@@ -66,7 +77,9 @@ public class GameController {
 
         gameNameLabel.setText(gameName);
 
-        configLabel.setText("Parameters of field : " + config.getWidth() + "*" + config.getHeight() +
+        configLabel.setText("Parameters of field " +
+                "\nWidth :" + config.getWidth() +
+                "\nHeight : " + config.getHeight() +
                 "\nStatic food : " + config.getFoodStatic() +
                 "\nDelay : " + config.getStateDelayMs() + " ms");
 
