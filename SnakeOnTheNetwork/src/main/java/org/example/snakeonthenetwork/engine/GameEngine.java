@@ -124,11 +124,14 @@ public class GameEngine {
                 }
             } else {
                 survivingSnakes.add(attacker);
-                countAliveSnakes += 1;
+                if (attacker.getState() != SnakesProto.GameState.Snake.SnakeState.ZOMBIE) {
+                    countAliveSnakes += 1;
+                }
+
             }
 
         }
-
+        logger.info("alive snakes : {}", countAliveSnakes);
         if (countAliveSnakes == 0) {
             logger.trace("there are not alive snakes!");
             controller.gameOver();

@@ -17,6 +17,8 @@ public class MainController {
     private final int NUM_THREADS = 2;
     private final int ANNOUNCEMENT_DELAY = 1; //sec
 
+    private final Object stateLock = new Object();
+
     private final SnakeApp app;
     private final NetworkController network;
     private GameEngine engine;
@@ -60,7 +62,9 @@ public class MainController {
         this.masterId = myId;
 
         this.engine = new GameEngine(config, this);
-        this.gameState = engine.createInitialState(playerName, network.getUnicastPort());
+        synchronized (stateLock) {
+            this.gameState = engine.createInitialState(playerName, network.getUnicastPort());
+        }
 
         network.updateStateDelay(gameConfig.getStateDelayMs());
         startGameLoop();
@@ -82,8 +86,11 @@ public class MainController {
 
         gameLoopTask = gameScheduler.scheduleAtFixedRate(() -> {
             try {
-                SnakesProto.GameState nextState = engine.update(gameState, movesBuffer);
-                this.gameState = nextState;
+                SnakesProto.GameState nextState;
+                synchronized (stateLock) {
+                    nextState = engine.update(gameState, movesBuffer);
+                    this.gameState = nextState;
+                }
                 this.movesBuffer.clear();
 
                 if (deputyId == -1) {
@@ -140,7 +147,7 @@ public class MainController {
 
     public void onMessageReceived(SnakesProto.GameMessage msg) { //вызывается из network, не проверяю роли, с надеждой на правильность отправки
 
-        updateNodeTimestamp(msg.getSenderId()); //TODO ааааа в итоге где следить за отвалкой игроков????
+        updateNodeTimestamp(msg.getSenderId());
         if (msg.hasAck()) {
             handleAck(msg);
             return;
@@ -196,16 +203,36 @@ public class MainController {
             removePlayer(msg.getSenderId());
         } else if (msg.getRoleChange().getReceiverRole() == SnakesProto.NodeRole.MASTER) {
             nowImMaster();
+        } else if (msg.getRoleChange().getReceiverRole() == SnakesProto.NodeRole.NORMAL) {
+            if (gameLoopTask != null) {
+                gameLoopTask.cancel(true);
+                gameLoopTask = null;
+            }
+
+            if (announcementTask != null) {
+                announcementTask.cancel(true);
+                announcementTask = null;
+            }
         }
     }
 
     private void handleState(SnakesProto.GameMessage msg) {
+        // 1. Если Я - Мастер, а мне шлют стейт -> это бунт.
+        if (myRole == SnakesProto.NodeRole.MASTER) {
+            logger.warn("I am MASTER, but received STATE from node {}. Sending them to VIEWER.", msg.getSenderId());
+            // Отправляем самозванцу приказ стать Зрителем (или Normal)
+            network.sendChangeRole(SnakesProto.NodeRole.MASTER, msg.getSenderId(), SnakesProto.NodeRole.NORMAL);
+            return;
+        }
+
         SnakesProto.GameState newState = msg.getState().getState();
-        if (gameState == null || newState.getStateOrder() > gameState.getStateOrder()) {
-            this.gameState = newState;
-            masterId = msg.getSenderId();
-            deputyId = getDeputyId();
-            Platform.runLater(() -> app.updateGameState(newState));
+        synchronized (stateLock) {
+            if (gameState == null || newState.getStateOrder() > gameState.getStateOrder()) {
+                this.gameState = newState;
+                masterId = msg.getSenderId();
+                deputyId = getDeputyId();
+                Platform.runLater(() -> app.updateGameState(newState));
+            }
         }
     }
 
@@ -228,7 +255,8 @@ public class MainController {
             } catch (Exception e) {
                 logger.error("Ping error", e);
             }
-        }, 0, gameConfig.getStateDelayMs() / 10, TimeUnit.MILLISECONDS);
+            // TODO }, 0, gameConfig.getStateDelayMs() / 10, TimeUnit.MILLISECONDS);
+        }, 0, gameConfig.getStateDelayMs() / 5, TimeUnit.MILLISECONDS);
     }
 
     private void handleJoinRequest(SnakesProto.GameMessage msg) {
@@ -237,7 +265,9 @@ public class MainController {
 
         GameEngine.PlayerIdAndState playerIdAndState = engine.addPlayer(gameState, join.getPlayerName(), join.getRequestedRole(), network.getPlayerAddress(0)); //TODO возможно надо пробрасывать адрес (если сменится мастер?)
         int newPlayerId = playerIdAndState.playerId();
-        gameState = playerIdAndState.newState();
+        synchronized (stateLock) {
+            gameState = playerIdAndState.newState();
+        }
         if (newPlayerId == -1) {
             network.sendError("No space or game full");
             logger.warn("No space or game full, send error");
@@ -280,17 +310,29 @@ public class MainController {
     }
 
     private void handleNodeTimeout(int playerId) {
-        removePlayer(playerId);
+
         if (playerId == deputyId && myId == masterId) {
             // assignNewDeputy();
+
         } else if (playerId == masterId && myId == deputyId) {
-            myRole = SnakesProto.NodeRole.MASTER;
-            masterId = myId;
-            logger.trace("I'M A MASTER!!!!");
-            gameState = engine.updateRole(gameState, myId, SnakesProto.NodeRole.MASTER);
-            network.broadcastChangeMaster();
-            assignNewDeputy();
-            startGameLoop();
+            logger.info("Deputy taking over as Master...");
+            synchronized (stateLock) {
+                removePlayer(playerId);
+                // 1. Обновляем локальные данные
+                myRole = SnakesProto.NodeRole.MASTER;
+                masterId = myId;
+
+
+                gameState = engine.updateRole(gameState, myId, SnakesProto.NodeRole.MASTER);
+
+                assignNewDeputy();
+
+                network.broadcastChangeMaster();
+
+                network.broadcastState(gameState);
+
+                startGameLoop();
+            }
         } else if (playerId == masterId) {
             //TODO ????
             //  masterId = deputyId;
@@ -301,7 +343,9 @@ public class MainController {
         lastSeenNodes.remove(playerId);
         network.removePlayer(playerId);
         //делаем игрока viewer, пока его зомби-змейка не расшибется
-        this.gameState = engine.removePlayer(gameState, playerId); // TODO сделать thread-safe!!!!!
+        synchronized (stateLock) {
+            this.gameState = engine.removePlayer(gameState, playerId); // TODO сделать thread-safe!!!!!
+        }
         if (playerId == deputyId) {
             deputyId = -1;
         }
@@ -310,17 +354,19 @@ public class MainController {
     private void assignNewDeputy() { //только для мастера
         logger.trace("try to assign new deputy");
         deputyId = -1;
-        for (SnakesProto.GamePlayer player : gameState.getPlayers().getPlayersList()) {
-            if (player.getId() != myId && player.getRole() == SnakesProto.NodeRole.NORMAL && lastSeenNodes.containsKey(player.getId())) {
-                deputyId = player.getId();
+        synchronized (stateLock) {
+            for (SnakesProto.GamePlayer player : gameState.getPlayers().getPlayersList()) {
+                if (player.getId() != myId && player.getRole() == SnakesProto.NodeRole.NORMAL && lastSeenNodes.containsKey(player.getId())) {
+                    deputyId = player.getId();
+                }
             }
+            if (deputyId == -1) {
+                logger.trace("FAIL to assign new deputy");
+                return;
+            }
+            me.ippolitov.fit.snakes.SnakesProto.GameState newState = engine.updateRole(gameState, deputyId, SnakesProto.NodeRole.DEPUTY);
+            gameState = newState;
         }
-        if (deputyId == -1) {
-            logger.trace("FAIL to assign new deputy");
-            return;
-        }
-        me.ippolitov.fit.snakes.SnakesProto.GameState newState = engine.updateRole(gameState, deputyId, SnakesProto.NodeRole.DEPUTY);
-        gameState = newState;
         network.sendChangeRole(SnakesProto.NodeRole.MASTER, deputyId, SnakesProto.NodeRole.DEPUTY);
     }
 
