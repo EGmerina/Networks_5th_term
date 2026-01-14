@@ -130,6 +130,7 @@ public class GameEngine {
         }
 
         if (countAliveSnakes == 0) {
+            logger.trace("there are not alive snakes!");
             controller.gameOver();
         }
 
@@ -453,9 +454,9 @@ public class GameEngine {
 
     // Генерация еды
     private List<SnakesProto.GameState.Coord> generateFood(int w, int h, List<SnakesProto.GameState.Snake> snakes, List<SnakesProto.GameState.Coord> foods) {
-        int needed = config.getFoodStatic() + (int) (config.getFoodStatic() * snakes.size());
+        int needed = config.getFoodStatic() + snakes.size();
 
-        while (foods.size() < needed) {
+        while (foods.size() < needed) { //TODO for
             // Ищем свободную клетку (не занятую змеями и другой едой)
             SnakesProto.GameState.Coord f = findFreePoint(w, h, snakes, foods);
             foods.add(f);
@@ -530,7 +531,7 @@ public class GameEngine {
             if (players.get(i).getId() == id) {
                 var b = players.get(i).toBuilder();
                 if (scoreAdd > 0) b.setScore(b.getScore() + scoreAdd);
-//                if (setViewer) {
+//                if (setViewer && players.get(i).getRole() != SnakesProto.NodeRole.MASTER && players.get(i).getRole() != SnakesProto.NodeRole.DEPUTY) {
 //                    b.setRole(SnakesProto.NodeRole.VIEWER);
 //                }
                 players.set(i, b.build());

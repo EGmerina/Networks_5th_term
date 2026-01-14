@@ -23,7 +23,7 @@ public class MainController {
     private static final Logger logger = LogManager.getLogger(MainController.class);
 
 
-    private volatile SnakesProto.GameState gameState;
+    private volatile SnakesProto.GameState gameState = null;
     private SnakesProto.GameConfig gameConfig;
     private String gameName;
 
@@ -70,7 +70,9 @@ public class MainController {
     }
 
     private void startGameLoop() { //для мастера
+        logger.trace("start game loop");
         stopAllTasks();
+        network.startResendTask();
 
         if (gameScheduler.isShutdown()) {
             gameScheduler = Executors.newScheduledThreadPool(NUM_THREADS);
@@ -83,6 +85,10 @@ public class MainController {
                 SnakesProto.GameState nextState = engine.update(gameState, movesBuffer);
                 this.gameState = nextState;
                 this.movesBuffer.clear();
+
+                if (deputyId == -1) {
+                    assignNewDeputy();
+                }
 
                 network.broadcastState(nextState);
 
@@ -158,15 +164,15 @@ public class MainController {
 
     private void handleAnnouncement(SnakesProto.GameMessage msg) {
         SnakesProto.GameAnnouncement announcement = msg.getAnnouncement().getGamesList().getFirst();
-        if (announcement.getPlayers().getPlayersCount() == 1) {
-            InetSocketAddress addresAndPort = network.getPlayerAddress(msg.getSenderId());
-            var announcementBuilder = announcement.toBuilder();
-            announcementBuilder.getPlayersBuilder()
-                    .getPlayersBuilder(0)
-                    .setIpAddress(addresAndPort.getAddress().getHostAddress());
-
-            announcement = announcementBuilder.build();
-        }
+//        if (announcement.getPlayers().getPlayersCount() == 1) {
+//            InetSocketAddress addresAndPort = network.getPlayerAddress(msg.getSenderId());
+//            var announcementBuilder = announcement.toBuilder();
+//            announcementBuilder.getPlayersBuilder()
+//                    .getPlayersBuilder(0)
+//                    .setIpAddress(addresAndPort.getAddress().getHostAddress());
+//
+//            announcement = announcementBuilder.build();
+//        }
         app.handleAnnouncement(announcement);
     }
 
@@ -228,12 +234,12 @@ public class MainController {
             return;
         }
         updateNodeTimestamp(newPlayerId);
-        network.registerPlayer(newPlayerId);
+        network.registerNewPlayer(newPlayerId);
         logger.trace("Sending Ack from handleJoin");
         network.sendAck(msg.getMsgSeq(), newPlayerId);
-        if (deputyId == -1) {
-            assignNewDeputy();
-        }
+//        if (deputyId == -1) {
+//            assignNewDeputy();
+//        }
     }
 
 
@@ -247,13 +253,16 @@ public class MainController {
         long timeout = (long) (gameConfig.getStateDelayMs() * 0.8);
         try {
             lastSeenNodes.forEach((id, lastSeen) -> {
-                if (id == myId) return;
                 logger.info("id {}, lastSeen {}", id, now - lastSeen);
+                if (id == myId) return;
 
                 if (now - lastSeen > timeout) {
                     logger.info("Node " + id + " timed out. Handling...");
                     handleNodeTimeout(id);
                 }
+//                if (lastSeenNodes.isEmpty()) {
+//                    gameOver();
+//                }
             });
         } catch (Exception e) {
             logger.error("Exception when checking nodes {}", e);
@@ -263,7 +272,7 @@ public class MainController {
     private void handleNodeTimeout(int playerId) {
         removePlayer(playerId);
         if (playerId == deputyId && myId == masterId) {
-            assignNewDeputy();
+            // assignNewDeputy();
         } else if (playerId == masterId && myId == deputyId) {
             myRole = SnakesProto.NodeRole.MASTER;
             masterId = myId;
@@ -282,9 +291,13 @@ public class MainController {
         network.removePlayer(playerId);
         //делаем игрока viewer, пока его зомби-змейка не расшибется
         this.gameState = engine.removePlayer(gameState, playerId); // TODO сделать thread-safe!!!!!
+        if (playerId == deputyId) {
+            deputyId = -1;
+        }
     }
 
     private void assignNewDeputy() { //только для мастера
+        logger.trace("try to assign new deputy");
         deputyId = -1;
         for (SnakesProto.GamePlayer player : gameState.getPlayers().getPlayersList()) {
             if (player.getId() != myId && player.getRole() == SnakesProto.NodeRole.NORMAL && lastSeenNodes.containsKey(player.getId())) {
@@ -292,6 +305,7 @@ public class MainController {
             }
         }
         if (deputyId == -1) {
+            logger.trace("FAIL to assign new deputy");
             return;
         }
         me.ippolitov.fit.snakes.SnakesProto.GameState newState = engine.updateRole(gameState, deputyId, SnakesProto.NodeRole.DEPUTY);
@@ -335,6 +349,7 @@ public class MainController {
     }
 
     public void stopGame() {
+        logger.info("Stop game");
         lastSeenNodes.clear();
         movesBuffer.clear();
         network.sendChangeRole(SnakesProto.NodeRole.VIEWER, masterId, SnakesProto.NodeRole.MASTER);
@@ -377,30 +392,6 @@ public class MainController {
         startGameLoop();
     }
 
-//    public void nowImDeputy() {
-//        deputyId = myId;
-//        myRole = SnakesProto.NodeRole.DEPUTY;
-//    }
-//
-//    public void nowImViewer() {
-//        myRole = SnakesProto.NodeRole.VIEWER;
-//        if (gameLoopTask != null) {
-//            gameLoopTask.cancel(true);
-//            gameLoopTask = null;
-//        }
-//
-//        if (announcementTask != null) {
-//            announcementTask.cancel(true);
-//            announcementTask = null;
-//        }
-//
-//        if (timeoutTask != null) {
-//            timeoutTask.cancel(true);
-//            timeoutTask = null;
-//        }
-//
-//    }
-
 
     public void sendChangeRole(int playerId, SnakesProto.NodeRole newRole) {
         logger.info("SEND ROLE {} to {}", newRole, playerId);
@@ -408,6 +399,7 @@ public class MainController {
     }
 
     public void gameOver() {
+        logger.info("Game over");
         stopGame();
         Platform.runLater(() -> app.showGameOver());
     }

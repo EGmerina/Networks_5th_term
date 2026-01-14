@@ -30,13 +30,16 @@ public class NetworkController {
 
     private AtomicLong lastSendTime = new AtomicLong(0); // в целом
 
-    public void registerPlayer(int newPlayerId) {
+    public void registerNewPlayer(int newPlayerId) {
         InetSocketAddress address = playersAddresses.remove(0);
         playersAddresses.put(newPlayerId, address);
     }
 
     public void removePlayer(int playerId) {
         playersAddresses.remove(playerId);
+        unconfirmedMessages.entrySet().removeIf(entry ->
+                entry.getValue().message.getReceiverId() == playerId
+        );
     }
 
     public void stopResendTask() {
@@ -71,8 +74,15 @@ public class NetworkController {
         startResendTask();
     }
 
-    private void startResendTask() {
+    public void startResendTask() {
         stopResendTask();
+//        if (gameState != null) {
+//            for (SnakesProto.GamePlayer player : gameState.getPlayers().getPlayersList()) {
+//                if (player.hasIpAddress() && player.hasPort()) {
+//                    playersAddresses.put(player.getId(), new InetSocketAddress(player.getIpAddress(), player.getPort()));
+//                }
+//            }
+//        }
         resendTask = resendTimer.scheduleAtFixedRate(() -> {
             long now = System.currentTimeMillis();
             unconfirmedMessages.forEach((seq, umsg) -> {
@@ -165,6 +175,7 @@ public class NetworkController {
     }
 
     public void sendChangeRole(SnakesProto.NodeRole senderRole, int recId, SnakesProto.NodeRole recRole) {
+        logger.trace("Sending role change: myId {}, myRole {}, recId {}, recRole {}", controller.getMyId(), senderRole, recId, recRole);
         SnakesProto.GameMessage.RoleChangeMsg roleChange = SnakesProto.GameMessage.RoleChangeMsg.newBuilder()
                 .setSenderRole(senderRole)
                 .setReceiverRole(recRole)
@@ -275,15 +286,15 @@ public class NetworkController {
     }
 
 
-    public void handleMessage(SnakesProto.GameMessage message, InetAddress ip, int port) {
-
+    public void handleMessage(SnakesProto.GameMessage msg, InetAddress ip, int port) {
+        SnakesProto.GameMessage message = msg;
         InetSocketAddress senderAddr = new InetSocketAddress(ip, port);
 
         logger.debug("Received message : {} from {}", message.getTypeCase(), message.getSenderId());
 
         if (message.hasSenderId() && !message.hasJoin() && (isDuplicate(message.getSenderId(), message.getMsgSeq()) || message.getSenderId() == controller.getMyId())) {
             //TODo все еще может игронироваться что-то
-            logger.warn("Ignore message : {} from {}", message.getTypeCase(), message.getSenderId());
+            logger.trace("Ignore message : {} from {}", message.getTypeCase(), message.getSenderId());
             return;
         }
 
@@ -295,22 +306,32 @@ public class NetworkController {
         }
 
         if (message.hasSenderId() && !message.hasDiscover() && !message.hasAck() && !message.hasPing()) {
-            receivedMessages.put(message.getSenderId(), message.getMsgSeq());
+
             if (message.hasAnnouncement()) {
-                int masterPort = -1;
-                SnakesProto.GameAnnouncement announcement = message.getAnnouncement().getGamesList().getFirst();
-                for (SnakesProto.GamePlayer player : announcement.getPlayers().getPlayersList()) {
-                    if (player.getRole() == SnakesProto.NodeRole.MASTER) {
-                        masterPort = player.getPort();
-                    }
+                // Сначала проверяем условие, чтобы лишний раз не создавать билдеры
+                SnakesProto.GameAnnouncement firstGame = message.getAnnouncement().getGamesList().getFirst();
+
+                // Ваша проверка: меняем только если игрок всего один
+                if (firstGame.getPlayers().getPlayersCount() == 1) {
+
+                    // 1. Создаем билдер для сообщения AnnouncementMsg
+                    var announcementMsgBuilder = message.getAnnouncement().toBuilder();
+
+                    // 2. Получаем билдер первой игры -> билдер списка игроков -> билдер 0-го игрока
+                    // И сразу устанавливаем IP и порт
+                    announcementMsgBuilder.getGamesBuilder(0)
+                            .getPlayersBuilder()
+                            .getPlayersBuilder(0)
+                            .setIpAddress(ip.getHostAddress());
+
+                    // 3. Пересобираем итоговое сообщение
+                    message = message.toBuilder()
+                            .setAnnouncement(announcementMsgBuilder)
+                            .build();
                 }
-                if (masterPort == -1) {
-                    logger.error("No master in game {}", announcement.getGameName());
-                    return;
-                }
-                playersAddresses.put(message.getSenderId(), new InetSocketAddress(senderAddr.getAddress(), masterPort));
             } else {
                 playersAddresses.put(message.getSenderId(), senderAddr);
+                receivedMessages.put(message.getSenderId(), message.getMsgSeq());
             }
 
         }

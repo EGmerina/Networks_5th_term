@@ -91,12 +91,17 @@ public class GameController {
                 "\nDelay : " + config.getStateDelayMs() + " ms");
 
         scoreList.getItems().clear();
+        boolean imAlive = false;
         for (GamePlayer player : state.getPlayers().getPlayersList()) {
             if (app.getMyId() == player.getId()) {
-                scoreList.getItems().add("ME: " + player.getName() + " (" + player.getRole() + ") " + ": " + player.getScore());
+                scoreList.getItems().add("ME: " + player.getName() + " (" + player.getRole() + ") id " + player.getId() + " : " + player.getScore());
+                imAlive = true;
             } else {
-                scoreList.getItems().add(player.getName() + " (" + player.getRole() + ") " + ": " + player.getScore());
+                scoreList.getItems().add(player.getName() + " (" + player.getRole() + ") id " + player.getId() + " : " + player.getScore());
             }
+        }
+        if (!imAlive) {
+            showGameOver();
         }
     }
 

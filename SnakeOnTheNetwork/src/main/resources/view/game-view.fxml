@@ -9,32 +9,27 @@
 <?import javafx.scene.layout.VBox?>
 <?import javafx.scene.text.Font?>
 
-<BorderPane fx:id="rootPane" onKeyPressed="#handleKeyPressed" prefHeight="591.0" prefWidth="945.0" xmlns="http://javafx.com/javafx/24.0.1" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.example.snakeonthenetwork.ui.GameController">
+<BorderPane fx:id="rootPane" onKeyPressed="#handleKeyPressed" prefHeight="591.0" prefWidth="966.0" xmlns="http://javafx.com/javafx/24.0.1" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.example.snakeonthenetwork.ui.GameController">
 
     <center>
         <StackPane fx:id="canvasContainer" minHeight="0" minWidth="0" prefHeight="591.0" prefWidth="703.0" style="-fx-background-color: black;">
 
             <Canvas fx:id="canvas" height="5.0" width="83.0" />
 
-            <VBox fx:id="gameOverOverlay" alignment="CENTER" spacing="20.0" visible="false" style="-fx-background-color: rgba(0, 0, 0, 0.7);">
+            <VBox fx:id="gameOverOverlay" alignment="CENTER" spacing="20.0" style="-fx-background-color: rgba(0, 0, 0, 0.7);" visible="false">
                 <Label text="GAME OVER" textFill="RED">
                     <font>
                         <Font name="System Bold" size="48.0" />
                     </font>
                 </Label>
-                <Label fx:id="finalScoreLabel" text="Your Score: 0" textFill="WHITE">
-                    <font>
-                        <Font size="24.0" />
-                    </font>
-                </Label>
-                <Button text="Back to Menu" onAction="#handleExit" style="-fx-font-size: 16px; -fx-padding: 10 20;"/>
+                <Button onAction="#handleExit" style="-fx-font-size: 16px; -fx-padding: 10 20;" text="Back to Menu" />
             </VBox>
 
         </StackPane>
     </center>
 
     <right>
-        <VBox prefHeight="591.0" prefWidth="175.0" spacing="10" style="-fx-padding: 10; -fx-background-color: #ddd;">
+        <VBox prefHeight="591.0" prefWidth="230.0" spacing="10" style="-fx-padding: 10; -fx-background-color: #ddd;">
          <Label fx:id="gameNameLabel" prefHeight="35.0" prefWidth="144.0">
             <font>
                <Font size="15.0" />
@@ -42,7 +37,7 @@
          </Label>
             <Label style="-fx-font-weight: bold;" text="Scoreboard" />
             <ListView fx:id="scoreList" minHeight="-Infinity" minWidth="-Infinity" prefHeight="342.0" prefWidth="172.0" VBox.vgrow="ALWAYS" />
-         <Label fx:id="configLabel" prefHeight="124.0" prefWidth="174.0" textAlignment="CENTER" VBox.vgrow="ALWAYS">
+         <Label fx:id="configLabel" prefHeight="117.0" prefWidth="207.0" textAlignment="CENTER" VBox.vgrow="ALWAYS">
             <font>
                <Font size="15.0" />
             </font>
