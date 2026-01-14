@@ -50,6 +50,11 @@ public class NetworkController {
         unconfirmedMessages.clear();
     }
 
+
+    public void registerPlayer(int id, InetSocketAddress inetSocketAddress) {
+        playersAddresses.put(id, inetSocketAddress);
+    }
+
     private static class UnconfirmedMessage {
         final SnakesProto.GameMessage message;
         final SocketAddress address;
@@ -75,14 +80,8 @@ public class NetworkController {
     }
 
     public void startResendTask() {
-        stopResendTask();
-//        if (gameState != null) {
-//            for (SnakesProto.GamePlayer player : gameState.getPlayers().getPlayersList()) {
-//                if (player.hasIpAddress() && player.hasPort()) {
-//                    playersAddresses.put(player.getId(), new InetSocketAddress(player.getIpAddress(), player.getPort()));
-//                }
-//            }
-//        }
+        if (resendTask != null) return;
+
         resendTask = resendTimer.scheduleAtFixedRate(() -> {
             long now = System.currentTimeMillis();
             unconfirmedMessages.forEach((seq, umsg) -> {
@@ -193,7 +192,9 @@ public class NetworkController {
 
 
     public void sendPing() {
+        logger.trace("Try to send ping ");
         playersAddresses.forEach((playerId, address) -> {
+            logger.trace("To player {}", playerId);
             if (System.currentTimeMillis() - lastSendTime.get() > resendDelayMs && playerId > 0) {
                 SnakesProto.GameMessage msg = SnakesProto.GameMessage.newBuilder()
                         .setMsgSeq(seqCounter.incrementAndGet())
@@ -202,6 +203,7 @@ public class NetworkController {
                         .build();
                 unicastService.send(msg, address);
                 lastSendTime.set(System.currentTimeMillis());
+                logger.trace("Ping was sent to id {}", playerId);
             }
         });
     }
@@ -353,4 +355,6 @@ public class NetworkController {
     public int getUnicastPort() {
         return unicastService.getPort();
     }
+
+
 }

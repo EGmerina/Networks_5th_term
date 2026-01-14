@@ -111,11 +111,21 @@ public class MainController {
 
         startTimeoutTask();
 
+
+        if (gameState != null) {
+            for (SnakesProto.GamePlayer player : gameState.getPlayers().getPlayersList()) {
+                if (player.hasIpAddress() && player.hasPort()) {
+                    updateNodeTimestamp(player.getId());
+                    network.registerPlayer(player.getId(), new InetSocketAddress(player.getIpAddress(), player.getPort()));
+                }
+            }
+        }
     }
 
     private void startTimeoutTask() {
         if (timeoutTask != null) return;
-        timeoutTask = gameScheduler.scheduleAtFixedRate(this::checkNodes, 1, (long) (0.8 * gameConfig.getStateDelayMs()), TimeUnit.MILLISECONDS); //TODO тут хз какой интервал дожен быть
+        timeoutTask = gameScheduler.scheduleAtFixedRate(this::checkNodes, 1, gameConfig.getStateDelayMs(), TimeUnit.MILLISECONDS);
+        //  timeoutTask = gameScheduler.scheduleAtFixedRate(this::checkNodes, 1, (long) (0.8 * gameConfig.getStateDelayMs()), TimeUnit.MILLISECONDS); //TODO тут хз какой интервал дожен быть
     }
 
     public void joinGame(SnakesProto.GameAnnouncement announcement, String playerName, SnakesProto.NodeRole role) {
@@ -283,6 +293,7 @@ public class MainController {
             startGameLoop();
         } else if (playerId == masterId) {
             //TODO ????
+            //  masterId = deputyId;
         }
     }
 

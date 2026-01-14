@@ -88,6 +88,7 @@ public class UnicastService {
             byte[] data = msg.toByteArray();
             if (address == null) {
                 logger.error("ADDRESS IS NULL!!!!!!!!!!!!!!!!");
+                return;
             }
             logger.trace("Sent message type {} to {}, id {}, seq = {}", msg.getTypeCase(), address, msg.getReceiverId(), msg.getMsgSeq());
             DatagramPacket packet = new DatagramPacket(data, data.length, address);
