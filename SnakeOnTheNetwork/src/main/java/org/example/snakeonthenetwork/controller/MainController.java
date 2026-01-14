@@ -123,6 +123,7 @@ public class MainController {
     }
 
     public void onMessageReceived(SnakesProto.GameMessage msg) { //вызывается из network, не проверяю роли, с надеждой на правильность отправки
+
         updateNodeTimestamp(msg.getSenderId()); //TODO ааааа в итоге где следить за отвалкой игроков????
         if (msg.hasAck()) {
             handleAck(msg);
@@ -141,7 +142,6 @@ public class MainController {
         } else if (msg.hasError()) { //это вместо Ack на join
             Platform.runLater(() -> app.showError(msg.getError().getErrorMessage()));
         } else if (msg.hasPing()) { //время обновилось
-
         } else if (msg.hasSteer()) {
             movesBuffer.put(msg.getSenderId(), msg.getSteer().getDirection());
         } else if (msg.hasJoin()) {
@@ -216,6 +216,7 @@ public class MainController {
     }
 
     private void handleJoinRequest(SnakesProto.GameMessage msg) {
+        logger.trace("handleJoinRequest");
         SnakesProto.GameMessage.JoinMsg join = msg.getJoin();
 
         GameEngine.PlayerIdAndState playerIdAndState = engine.addPlayer(gameState, join.getPlayerName(), join.getRequestedRole(), network.getPlayerAddress(0)); //TODO возможно надо пробрасывать адрес (если сменится мастер?)
@@ -223,10 +224,12 @@ public class MainController {
         gameState = playerIdAndState.newState();
         if (newPlayerId == -1) {
             network.sendError("No space or game full");
+            logger.warn("No space or game full, send error");
             return;
         }
         updateNodeTimestamp(newPlayerId);
         network.registerPlayer(newPlayerId);
+        logger.trace("Sending Ack from handleJoin");
         network.sendAck(msg.getMsgSeq(), newPlayerId);
         if (deputyId == -1) {
             assignNewDeputy();
@@ -326,12 +329,15 @@ public class MainController {
             pingTask = null;
         }
 
+        network.stopResendTask();
+
         logger.info("All tasks stopped.");
     }
 
     public void stopGame() {
         lastSeenNodes.clear();
         movesBuffer.clear();
+        network.sendChangeRole(SnakesProto.NodeRole.VIEWER, masterId, SnakesProto.NodeRole.MASTER);
         stopAllTasks();
     }
 
@@ -399,6 +405,11 @@ public class MainController {
     public void sendChangeRole(int playerId, SnakesProto.NodeRole newRole) {
         logger.info("SEND ROLE {} to {}", newRole, playerId);
         network.sendChangeRole(myRole, playerId, newRole);
+    }
+
+    public void gameOver() {
+        stopGame();
+        Platform.runLater(() -> app.showGameOver());
     }
 }
 

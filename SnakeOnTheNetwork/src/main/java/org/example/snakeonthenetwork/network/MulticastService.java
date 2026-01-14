@@ -75,6 +75,9 @@ public class MulticastService {
 
                         networkController.handleMessage(message, packet.getAddress(), packet.getPort());
 
+                    } catch (SocketException e) {
+                        logger.info("Multicast socket closed, stopping receiver thread.");
+                        break;
                     } catch (IOException e) {
                         logger.error("IO Error in receive loop", e);
                         if (socket.isClosed()) break;

@@ -58,7 +58,7 @@ public class UnicastService {
                     networkController.handleMessage(message, packet.getAddress(), packet.getPort());
 
                 } catch (SocketException e) {
-                    logger.info("Socket closed, stopping receiver thread.");
+                    logger.info("Unicast socket closed, stopping receiver thread.");
                     break;
                 } catch (IOException e) {
                     logger.error("Error receiving packet", e);

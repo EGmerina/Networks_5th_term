@@ -135,4 +135,8 @@ public class SnakeApp extends Application {
         super.stop();
         System.exit(0);
     }
+
+    public void showGameOver() {
+        gameController.showGameOver();
+    }
 }

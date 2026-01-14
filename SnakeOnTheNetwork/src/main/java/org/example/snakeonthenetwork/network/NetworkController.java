@@ -39,6 +39,13 @@ public class NetworkController {
         playersAddresses.remove(playerId);
     }
 
+    public void stopResendTask() {
+        if (resendTask != null) {
+            resendTask.cancel(true);
+            resendTask = null;
+        }
+        unconfirmedMessages.clear();
+    }
 
     private static class UnconfirmedMessage {
         final SnakesProto.GameMessage message;
@@ -65,9 +72,7 @@ public class NetworkController {
     }
 
     private void startResendTask() {
-        if (resendTask != null) {
-            resendTask.cancel(true);
-        }
+        stopResendTask();
         resendTask = resendTimer.scheduleAtFixedRate(() -> {
             long now = System.currentTimeMillis();
             unconfirmedMessages.forEach((seq, umsg) -> {
@@ -83,10 +88,8 @@ public class NetworkController {
     public void stop() {
         multicastService.stop();
         unicastService.stop();
-        unconfirmedMessages.clear();
         receivedMessages.clear();
-        resendTask.cancel(true);
-        resendTask = null;
+        stopResendTask();
     }
 
     public void sendSteer(SnakesProto.Direction dir) {
@@ -278,8 +281,9 @@ public class NetworkController {
 
         logger.debug("Received message : {} from {}", message.getTypeCase(), message.getSenderId());
 
-        if (message.hasSenderId() && (isDuplicate(message.getSenderId(), message.getMsgSeq()) || message.getSenderId() == controller.getMyId())) {
+        if (message.hasSenderId() && !message.hasJoin() && (isDuplicate(message.getSenderId(), message.getMsgSeq()) || message.getSenderId() == controller.getMyId())) {
             //TODo все еще может игронироваться что-то
+            logger.warn("Ignore message : {} from {}", message.getTypeCase(), message.getSenderId());
             return;
         }
 

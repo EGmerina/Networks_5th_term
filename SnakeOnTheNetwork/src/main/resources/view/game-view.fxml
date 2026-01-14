@@ -13,7 +13,23 @@
 
     <center>
         <StackPane fx:id="canvasContainer" minHeight="0" minWidth="0" prefHeight="591.0" prefWidth="703.0" style="-fx-background-color: black;">
+
             <Canvas fx:id="canvas" height="5.0" width="83.0" />
+
+            <VBox fx:id="gameOverOverlay" alignment="CENTER" spacing="20.0" visible="false" style="-fx-background-color: rgba(0, 0, 0, 0.7);">
+                <Label text="GAME OVER" textFill="RED">
+                    <font>
+                        <Font name="System Bold" size="48.0" />
+                    </font>
+                </Label>
+                <Label fx:id="finalScoreLabel" text="Your Score: 0" textFill="WHITE">
+                    <font>
+                        <Font size="24.0" />
+                    </font>
+                </Label>
+                <Button text="Back to Menu" onAction="#handleExit" style="-fx-font-size: 16px; -fx-padding: 10 20;"/>
+            </VBox>
+
         </StackPane>
     </center>
 

@@ -91,27 +91,51 @@ public class GameEngine {
         // --- ШАГ 2: Проверяем столкновения (Смерть) ---
         List<SnakesProto.GameState.Snake> survivingSnakes = new ArrayList<>();
 
+        int countAliveSnakes = 0;
+
         for (SnakesProto.GameState.Snake attacker : movedSnakes) {
-            if (attacker.getState() == SnakesProto.GameState.Snake.SnakeState.ZOMBIE) {
-                survivingSnakes.add(attacker);
-                continue;
-            }
+//            if (attacker.getState() == SnakesProto.GameState.Snake.SnakeState.ZOMBIE) {
+//                survivingSnakes.add(attacker);
+//                continue;
+//            }
 
             boolean isDead = checkCollision(attacker, movedSnakes);
 
             if (isDead) {
-                // Игрок становится зрителем (умирает)
-                updatePlayerScoreOrRole(players, attacker.getPlayerId(), 0, true); //TODO не становтся зрителем
-                // (Опционально) Превращение мертвой змеи в еду с вероятностью 0.5 (как в задании)
-                // Но пока следуем вашей логике простого удаления
+
+                updatePlayerScoreOrRole(players, attacker.getPlayerId(), 0, true);  //TODO не становтся зрителем
+
+                // 2. Превращение змеи в еду (вероятность 0.5 для каждой клетки)
+                List<SnakesProto.GameState.Coord> deadBody = getAbsoluteCoords(attacker);
+                for (SnakesProto.GameState.Coord coord : deadBody) {
+                    if (random.nextDouble() < 0.5) {
+                        // Проверяем, нет ли там уже еды (опционально, но полезно)
+                        boolean alreadyFood = false;
+                        for (SnakesProto.GameState.Coord f : foods) {
+                            if (f.getX() == coord.getX() && f.getY() == coord.getY()) {
+                                alreadyFood = true;
+                                break;
+                            }
+                        }
+                        if (!alreadyFood) {
+                            foods.add(coord);
+                        }
+                    }
+                }
             } else {
                 survivingSnakes.add(attacker);
+                countAliveSnakes += 1;
             }
+
+        }
+
+        if (countAliveSnakes == 0) {
+            controller.gameOver();
         }
 
         // --- ШАГ 2.5: РОТАЦИЯ РОЛЕЙ (Master -> Deputy -> Normal) ---
         // Выполняем после цикла смертей, чтобы состояние игроков было финальным для этого тика
-        ensureRoles(players);
+        //    ensureRoles(players);
 
         // --- ШАГ 3: Добавляем еду ---
         foods = generateFood(width, height, survivingSnakes, foods);
@@ -218,16 +242,16 @@ public class GameEngine {
         }
         int newId = maxId + 1;
 
-        SnakesProto.NodeRole newRole = role;
-        if (role != SnakesProto.NodeRole.VIEWER && currentState.getPlayers().getPlayersCount() == 1) {
-            newRole = SnakesProto.NodeRole.DEPUTY;
-        }
+//        SnakesProto.NodeRole newRole = role;
+//        if (role != SnakesProto.NodeRole.VIEWER && currentState.getPlayers().getPlayersCount() == 1) {
+//            newRole = SnakesProto.NodeRole.DEPUTY;
+//        }
 
 
         SnakesProto.GamePlayer newPlayer = SnakesProto.GamePlayer.newBuilder()
                 .setName(name)
                 .setId(newId)
-                .setRole(newRole)
+                .setRole(role)
                 .setType(SnakesProto.PlayerType.HUMAN)
                 .setScore(0)
                 .setIpAddress(platerAddress.getAddress().getHostName())
