@@ -1,16 +1,23 @@
 package org.example.snakeonthenetwork.engine;
 
 import me.ippolitov.fit.snakes.SnakesProto;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.example.snakeonthenetwork.controller.MainController;
 
+import java.net.InetSocketAddress;
 import java.util.*;
 
 public class GameEngine {
 
     private final SnakesProto.GameConfig config;
     private final Random random = new Random();
+    private static final Logger logger = LogManager.getLogger(GameEngine.class);
+    private MainController controller;
 
-    public GameEngine(SnakesProto.GameConfig config) {
+    public GameEngine(SnakesProto.GameConfig config, MainController mainController) {
         this.config = config;
+        this.controller = mainController;
     }
 
     // =========================================================================
@@ -55,7 +62,7 @@ public class GameEngine {
         int width = config.getWidth();
         int height = config.getHeight();
 
-        // Копируем списки, чтобы изменять их
+        // Копируем списки
         List<SnakesProto.GameState.Snake> oldSnakes = currentState.getSnakesList();
         List<SnakesProto.GamePlayer> players = new ArrayList<>(currentState.getPlayers().getPlayersList());
         List<SnakesProto.GameState.Coord> foods = new ArrayList<>(currentState.getFoodsList());
@@ -64,25 +71,20 @@ public class GameEngine {
 
         // --- ШАГ 1: Двигаем змей ---
         for (SnakesProto.GameState.Snake snake : oldSnakes) {
-            // Если змея зомби — она не управляется (просто летит вперед или стоит, тут упростим: летит)
             if (snake.getState() == SnakesProto.GameState.Snake.SnakeState.ZOMBIE) {
                 movedSnakes.add(moveSingleSnake(snake, snake.getHeadDirection(), foods, players));
                 continue;
             }
 
-            // Определяем направление
             SnakesProto.Direction currentDir = snake.getHeadDirection();
             SnakesProto.Direction nextDir = currentDir;
 
             if (playerMoves != null && playerMoves.containsKey(snake.getPlayerId())) {
                 SnakesProto.Direction requested = playerMoves.get(snake.getPlayerId());
-                // Запрещаем разворот на 180 градусов
                 if (!isOpposite(currentDir, requested)) {
                     nextDir = requested;
                 }
             }
-
-            // Двигаем и проверяем еду
             movedSnakes.add(moveSingleSnake(snake, nextDir, foods, players));
         }
 
@@ -91,22 +93,27 @@ public class GameEngine {
 
         for (SnakesProto.GameState.Snake attacker : movedSnakes) {
             if (attacker.getState() == SnakesProto.GameState.Snake.SnakeState.ZOMBIE) {
-                survivingSnakes.add(attacker); // Зомби не умирают (пока)
+                survivingSnakes.add(attacker);
                 continue;
             }
 
             boolean isDead = checkCollision(attacker, movedSnakes);
 
             if (isDead) {
-                // Игрок становится зрителем
-                updatePlayerScoreOrRole(players, attacker.getPlayerId(), 0, true);
-                // Змея может стать едой (с вероятностью 0.1 по заданию), но пока просто удаляем
+                // Игрок становится зрителем (умирает)
+                updatePlayerScoreOrRole(players, attacker.getPlayerId(), 0, true); //TODO не становтся зрителем
+                // (Опционально) Превращение мертвой змеи в еду с вероятностью 0.5 (как в задании)
+                // Но пока следуем вашей логике простого удаления
             } else {
                 survivingSnakes.add(attacker);
             }
         }
 
-        // --- ШАГ 3: Добавляем еду (если съели) ---
+        // --- ШАГ 2.5: РОТАЦИЯ РОЛЕЙ (Master -> Deputy -> Normal) ---
+        // Выполняем после цикла смертей, чтобы состояние игроков было финальным для этого тика
+        ensureRoles(players);
+
+        // --- ШАГ 3: Добавляем еду ---
         foods = generateFood(width, height, survivingSnakes, foods);
 
         // --- ШАГ 4: Собираем новый стейт ---
@@ -114,18 +121,87 @@ public class GameEngine {
                 .setStateOrder(currentState.getStateOrder() + 1)
                 .clearSnakes().addAllSnakes(survivingSnakes)
                 .clearFoods().addAllFoods(foods)
-                .setPlayers(SnakesProto.GamePlayers.newBuilder().addAllPlayers(players)) // Обновленные очки/роли
+                .setPlayers(SnakesProto.GamePlayers.newBuilder().addAllPlayers(players))
                 .build();
     }
+
+    private void ensureRoles(List<SnakesProto.GamePlayer> players) {
+        // 1. Ищем текущего живого Мастера и Заместителя
+        SnakesProto.GamePlayer master = null;
+        SnakesProto.GamePlayer deputy = null;
+
+        // ВАЖНО: Мы ищем именно по роли в списке, который уже обновлен (мертвые стали VIEWER)
+        for (SnakesProto.GamePlayer p : players) {
+            if (p.getRole() == SnakesProto.NodeRole.MASTER) master = p;
+            else if (p.getRole() == SnakesProto.NodeRole.DEPUTY) deputy = p;
+        }
+
+
+        // 2. Если Мастера нет (он умер и стал VIEWER или вышел), назначаем Заместителя
+        if (master == null) {
+
+            if (deputy != null) {
+                // Повышаем Deputy до Master
+                logger.info("deouty to master");
+                changePlayerRole(players, deputy.getId(), SnakesProto.NodeRole.MASTER);
+                //TODO тут логика неправильная, если мы deputy мы вообще сюда не попадаем
+
+                // Теперь deputy стал мастером, значит позиция DEPUTY свободна
+                deputy = null;
+            } else {
+                // Если и Заместителя нет, можно попробовать назначить любого NORMAL (экстренный случай)
+                // Но по спецификации: Master умирает -> Deputy становится Master.
+                // Если Deputy не было, то Master выбирается из живых (обычно тот, у кого id меньше или счет больше)
+                int bestCandidate = findBestCandidate(players);
+                if (bestCandidate != -1) {
+                    changePlayerRole(players, bestCandidate, SnakesProto.NodeRole.MASTER);
+                }
+            }
+        }
+
+        // 3. Если Заместителя нет (он умер, вышел или только что стал Мастером)
+        if (deputy == null) {
+            int bestCandidate = findBestCandidate(players);
+            if (bestCandidate != -1) {
+                changePlayerRole(players, bestCandidate, SnakesProto.NodeRole.DEPUTY);
+            }
+        }
+    }
+
+    // Вспомогательный метод для смены роли конкретного игрока
+    private void changePlayerRole(List<SnakesProto.GamePlayer> players, int playerId, SnakesProto.NodeRole newRole) {
+        for (int i = 0; i < players.size(); i++) {
+            if (players.get(i).getId() == playerId) {
+                players.set(i, players.get(i).toBuilder().setRole(newRole).build());
+                logger.info("ROLE {} !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", newRole);
+                controller.sendChangeRole(playerId, newRole);
+                return;
+            }
+        }
+
+    }
+
+    // Поиск кандидата на повышение (среди NORMAL). Выбираем первого попавшегося или по счету.
+    private int findBestCandidate(List<SnakesProto.GamePlayer> players) {
+        // Можно добавить логику "самый большой счет", но пока берем первого NORMAL
+        for (SnakesProto.GamePlayer p : players) {
+            if (p.getRole() == SnakesProto.NodeRole.NORMAL) {
+                return p.getId();
+            }
+        }
+        return -1; // Кандидатов нет
+    }
+
 
     // =========================================================================
     // 3. УПРАВЛЕНИЕ ИГРОКАМИ (ADD / REMOVE)
     // =========================================================================
 
-    public record PlayerIdAndState(SnakesProto.GameState newState, int playerId, String error) {}
+    public record PlayerIdAndState(SnakesProto.GameState newState, int playerId, String error) {
+    }
 
     // Изменяем сигнатуру метода
-    public PlayerIdAndState addPlayer(SnakesProto.GameState currentState, String name, SnakesProto.NodeRole role) {
+    public PlayerIdAndState addPlayer(SnakesProto.GameState currentState, String name, SnakesProto.NodeRole role, InetSocketAddress platerAddress) {
         int width = config.getWidth();
         int height = config.getHeight();
 
@@ -142,14 +218,20 @@ public class GameEngine {
         }
         int newId = maxId + 1;
 
+        SnakesProto.NodeRole newRole = role;
+        if (role != SnakesProto.NodeRole.VIEWER && currentState.getPlayers().getPlayersCount() == 1) {
+            newRole = SnakesProto.NodeRole.DEPUTY;
+        }
+
+
         SnakesProto.GamePlayer newPlayer = SnakesProto.GamePlayer.newBuilder()
                 .setName(name)
                 .setId(newId)
-                .setRole(role)
+                .setRole(newRole)
                 .setType(SnakesProto.PlayerType.HUMAN)
                 .setScore(0)
-                .setIpAddress("")
-                .setPort(0)
+                .setIpAddress(platerAddress.getAddress().getHostName())
+                .setPort(platerAddress.getPort())
                 .build();
 
         SnakesProto.GameState.Snake newSnake = createSnake(newId, headCoord.getX(), headCoord.getY());
@@ -424,7 +506,9 @@ public class GameEngine {
             if (players.get(i).getId() == id) {
                 var b = players.get(i).toBuilder();
                 if (scoreAdd > 0) b.setScore(b.getScore() + scoreAdd);
-                if (setViewer) b.setRole(SnakesProto.NodeRole.VIEWER);
+//                if (setViewer) {
+//                    b.setRole(SnakesProto.NodeRole.VIEWER);
+//                }
                 players.set(i, b.build());
                 return;
             }

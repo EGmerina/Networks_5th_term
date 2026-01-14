@@ -35,6 +35,10 @@ public class NetworkController {
         playersAddresses.put(newPlayerId, address);
     }
 
+    public void removePlayer(int playerId) {
+        playersAddresses.remove(playerId);
+    }
+
 
     private static class UnconfirmedMessage {
         final SnakesProto.GameMessage message;

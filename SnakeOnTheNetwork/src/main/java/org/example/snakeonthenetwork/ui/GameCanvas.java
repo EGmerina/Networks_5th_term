@@ -16,7 +16,16 @@ public class GameCanvas {
     private static final Random random = new Random();
     private SnakeApp app;
 
-    private Color[] colorsForOtherPlayers = {Color.YELLOW, Color.BLUE, Color.AZURE, Color.ALICEBLUE, Color.ANTIQUEWHITE, Color.BISQUE, Color.PINK, Color.GRAY};
+    private Color[] colorsForOtherPlayers = {
+            Color.YELLOW,
+            Color.BLUE,
+            Color.ORANGE,
+            Color.MAGENTA, // Ярко-фиолетовый
+            Color.CYAN,    // Ярко-голубой
+            Color.PURPLE,
+            Color.BROWN,
+            Color.GOLD
+    };
 
     public void setDimensions(int width, int height) {
         this.width = width;
@@ -62,6 +71,9 @@ public class GameCanvas {
         // --- Рисуем змей ---
         for (SnakesProto.GameState.Snake snake : state.getSnakesList()) {
             gc.setFill(snake.getPlayerId() == app.getMyId() ? Color.GREEN : colorsForOtherPlayers[snake.getPlayerId() % colorsForOtherPlayers.length]);
+            if (snake.getState() == SnakesProto.GameState.Snake.SnakeState.ZOMBIE) {
+                gc.setFill(Color.WHITE);
+            }
 
             int x = 0;
             int y = 0;

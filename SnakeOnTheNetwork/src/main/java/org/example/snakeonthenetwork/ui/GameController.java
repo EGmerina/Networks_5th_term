@@ -85,7 +85,11 @@ public class GameController {
 
         scoreList.getItems().clear();
         for (GamePlayer player : state.getPlayers().getPlayersList()) {
-            scoreList.getItems().add(player.getName() + " (" + player.getRole() + ") " + ": " + player.getScore());
+            if (app.getMyId() == player.getId()) {
+                scoreList.getItems().add("ME: " + player.getName() + " (" + player.getRole() + ") " + ": " + player.getScore());
+            } else {
+                scoreList.getItems().add(player.getName() + " (" + player.getRole() + ") " + ": " + player.getScore());
+            }
         }
     }
 
