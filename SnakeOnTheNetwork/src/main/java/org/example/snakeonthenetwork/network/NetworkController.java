@@ -31,6 +31,7 @@ public class NetworkController {
     private AtomicLong lastSendTime = new AtomicLong(0); // в целом
 
     public void registerNewPlayer(int newPlayerId) {
+        receivedMessages.remove(0);
         InetSocketAddress address = playersAddresses.remove(0);
         playersAddresses.put(newPlayerId, address);
     }
@@ -48,6 +49,8 @@ public class NetworkController {
             resendTask = null;
         }
         unconfirmedMessages.clear();
+        receivedMessages.clear();
+        playersAddresses.clear();
     }
 
 
@@ -293,12 +296,16 @@ public class NetworkController {
         InetSocketAddress senderAddr = new InetSocketAddress(ip, port);
 
         logger.debug("Received message : {} from {}", message.getTypeCase(), message.getSenderId());
-
-        if (message.hasSenderId() && !message.hasJoin() && (isDuplicate(message.getSenderId(), message.getMsgSeq()) || message.getSenderId() == controller.getMyId())) {
+        //TODO && !message.hasJoin()
+        if (message.hasSenderId() && (isDuplicate(message.getSenderId(), message.getMsgSeq()) || message.getSenderId() == controller.getMyId())) {
             //TODo все еще может игронироваться что-то
             logger.trace("Ignore message : {} from {}", message.getTypeCase(), message.getSenderId());
             return;
         }
+//
+//        if (message.hasJoin()) {
+//            playersAddresses.put(message.getSenderId(), senderAddr); // senderId=0
+//        }
 
         if (message.hasAck()) {
             UnconfirmedMessage removed = unconfirmedMessages.remove(message.getMsgSeq());
@@ -332,7 +339,7 @@ public class NetworkController {
                             .build();
                 }
             } else {
-                playersAddresses.put(message.getSenderId(), senderAddr);
+                 playersAddresses.put(message.getSenderId(), senderAddr);
                 receivedMessages.put(message.getSenderId(), message.getMsgSeq());
             }
 

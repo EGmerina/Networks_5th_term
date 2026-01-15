@@ -137,6 +137,7 @@ public class SnakeApp extends Application {
     }
 
     public void showGameOver() {
+        if (gameController == null) return;
         gameController.showGameOver();
     }
 }

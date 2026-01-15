@@ -30,7 +30,7 @@ public class MainController {
     private String gameName;
 
     private volatile SnakesProto.NodeRole myRole = SnakesProto.NodeRole.NORMAL; //TODO е нужно!
-    private int myId;
+    private volatile int myId;
 
     private int deputyId = -1;
     private int masterId = -1;
@@ -131,8 +131,8 @@ public class MainController {
 
     private void startTimeoutTask() {
         if (timeoutTask != null) return;
-        timeoutTask = gameScheduler.scheduleAtFixedRate(this::checkNodes, 1, gameConfig.getStateDelayMs(), TimeUnit.MILLISECONDS);
-        //  timeoutTask = gameScheduler.scheduleAtFixedRate(this::checkNodes, 1, (long) (0.8 * gameConfig.getStateDelayMs()), TimeUnit.MILLISECONDS); //TODO тут хз какой интервал дожен быть
+        timeoutTask = gameScheduler.scheduleAtFixedRate(this::checkNodes, 1, 2 * gameConfig.getStateDelayMs(), TimeUnit.MILLISECONDS);
+        //timeoutTask = gameScheduler.scheduleAtFixedRate(this::checkNodes, 1, (long) (0.8 * gameConfig.getStateDelayMs()), TimeUnit.MILLISECONDS); //TODO тут хз какой интервал дожен быть
     }
 
     public void joinGame(SnakesProto.GameAnnouncement announcement, String playerName, SnakesProto.NodeRole role) {
@@ -213,6 +213,8 @@ public class MainController {
                 announcementTask.cancel(true);
                 announcementTask = null;
             }
+        } else if (msg.getRoleChange().getReceiverRole() == SnakesProto.NodeRole.VIEWER) {
+            gameOver();
         }
     }
 
@@ -310,14 +312,14 @@ public class MainController {
     }
 
     private void handleNodeTimeout(int playerId) {
+        synchronized (stateLock) {
+            removePlayer(playerId);
+            if (playerId == deputyId && myId == masterId) {
+                // assignNewDeputy();
 
-        if (playerId == deputyId && myId == masterId) {
-            // assignNewDeputy();
+            } else if (playerId == masterId && myId == deputyId) {
+                logger.info("Deputy taking over as Master...");
 
-        } else if (playerId == masterId && myId == deputyId) {
-            logger.info("Deputy taking over as Master...");
-            synchronized (stateLock) {
-                removePlayer(playerId);
                 // 1. Обновляем локальные данные
                 myRole = SnakesProto.NodeRole.MASTER;
                 masterId = myId;
@@ -332,22 +334,27 @@ public class MainController {
                 network.broadcastState(gameState);
 
                 startGameLoop();
+
+            } else if (playerId == masterId) {
+                //TODO ????
+                //  masterId = deputyId;
             }
-        } else if (playerId == masterId) {
-            //TODO ????
-            //  masterId = deputyId;
         }
     }
 
     private void removePlayer(int playerId) {
-        lastSeenNodes.remove(playerId);
-        network.removePlayer(playerId);
-        //делаем игрока viewer, пока его зомби-змейка не расшибется
         synchronized (stateLock) {
+            network.sendChangeRole(myRole, playerId, SnakesProto.NodeRole.VIEWER);
+            lastSeenNodes.remove(playerId);
+            network.removePlayer(playerId);
+            //делаем игрока viewer, пока его зомби-змейка не расшибется
+
             this.gameState = engine.removePlayer(gameState, playerId); // TODO сделать thread-safe!!!!!
-        }
-        if (playerId == deputyId) {
-            deputyId = -1;
+
+            if (playerId == deputyId) {
+                deputyId = -1;
+            }
+
         }
     }
 
@@ -380,6 +387,7 @@ public class MainController {
     }
 
     private void stopAllTasks() {
+
         if (gameLoopTask != null) {
             gameLoopTask.cancel(true);
             gameLoopTask = null;
@@ -406,10 +414,12 @@ public class MainController {
     }
 
     public void stopGame() {
+        myId = -1;
+        myRole = null;
         logger.info("Stop game");
         lastSeenNodes.clear();
         movesBuffer.clear();
-        network.sendChangeRole(SnakesProto.NodeRole.VIEWER, masterId, SnakesProto.NodeRole.MASTER);
+      //  network.sendChangeRole(SnakesProto.NodeRole.VIEWER, masterId, SnakesProto.NodeRole.MASTER);
         stopAllTasks();
     }
 
