@@ -12,7 +12,7 @@ import me.ippolitov.fit.snakes.SnakesProto.NodeRole;
 public class JoinGameController {
 
     @FXML private TextField gameNameField;
-    @FXML private Label configDetailsLabel; // Для отображения размеров и еды одной строкой
+    @FXML private Label configDetailsLabel;
     @FXML private TextField playerNameField;
     @FXML private ComboBox<NodeRole> roleComboBox;
     @FXML private Label errorLabel;
@@ -26,13 +26,10 @@ public class JoinGameController {
         this.dialogStage = dialogStage;
     }
 
-    /**
-     * Инициализация данных из выбранной игры
-     */
+
     public void setGameInfo(GameAnnouncement game) {
         this.targetGame = game;
 
-        // Заполняем поля (read-only)
         gameNameField.setText(game.getGameName());
 
         GameConfig config = game.getConfig();
@@ -43,7 +40,6 @@ public class JoinGameController {
                 config.getStateDelayMs());
         configDetailsLabel.setText(details);
 
-        // Настраиваем выбор роли
         roleComboBox.getItems().setAll(NodeRole.NORMAL, NodeRole.VIEWER);
         roleComboBox.setValue(NodeRole.NORMAL); // По умолчанию
     }
@@ -63,7 +59,6 @@ public class JoinGameController {
             return;
         }
 
-        // Вызываем метод входа в MainController / App
         app.joinGame(targetGame, playerName, selectedRole);
         dialogStage.close();
     }

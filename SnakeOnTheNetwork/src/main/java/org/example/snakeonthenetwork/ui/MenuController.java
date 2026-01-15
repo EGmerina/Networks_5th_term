@@ -20,10 +20,9 @@ import java.util.HashMap;
 
 public class MenuController {
     private static final Logger logger = LogManager.getLogger(MenuController.class);
-    private final HashMap<String, GameAnnouncement> availableGames = new HashMap<>(); //предполагается что не будет 300500 игр одновремено
-    //TODO проверятьь на одинаковые имена
+    private final HashMap<String, GameAnnouncement> availableGames = new HashMap<>();
     @FXML
-    private ListView<String> gamesList; // Храним строки или объекты игр
+    private ListView<String> gamesList;
     @FXML
     private Label statusLabel;
 
@@ -62,19 +61,18 @@ public class MenuController {
             FXMLLoader loader = new FXMLLoader(getClass().getResource("/view/config-view.fxml"));
             Parent root = loader.load();
 
-            // Создаем новое всплывающее окно
             Stage dialogStage = new Stage();
             dialogStage.setTitle("New Game Settings");
-            dialogStage.initModality(Modality.WINDOW_MODAL); // Блокирует главное окно
+            dialogStage.initModality(Modality.WINDOW_MODAL);
             dialogStage.initOwner(app.getPrimaryStage());
-            // ЯВНО ЗАДАЕМ РАЗМЕР
+
             dialogStage.setScene(new Scene(root, 500, 400));
             dialogStage.setResizable(false);
-            // Настраиваем контроллер
+
             ConfigController controller = loader.getController();
             controller.setApp(app, dialogStage);
 
-            dialogStage.showAndWait(); // Ждем, пока пользователь заполнит и закроет
+            dialogStage.showAndWait();
 
         } catch (IOException e) {
             e.printStackTrace();
@@ -96,13 +94,10 @@ public class MenuController {
             return;
         }
 
-        // Проверяем, есть ли смысл пытаться входить (хотя Viewer может зайти всегда, если конфиг позволяет)
-        // Но базовая проверка на переполнение для игроков не помешает, если вы ее реализуете
+
         if (!announcement.getCanJoin()) {
-            // Можно разрешить входить VIEWER-ом даже если canJoin=false (зависит от логики сервера)
-            // Но пока оставим предупреждение
-            statusLabel.setText("Game marked as not joinable (maybe full?)");
-            // return; // Раскомментируйте, если хотите запретить открывать окно
+
+            statusLabel.setText("Game marked as not joinable (maybe full)");
         }
 
         logger.info("Opening join dialog for: " + announcement.getGameName());

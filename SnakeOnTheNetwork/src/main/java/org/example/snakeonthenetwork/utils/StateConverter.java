@@ -13,7 +13,7 @@ public class StateConverter {
         for (SnakesProto.GameState.Coord food : gameState.getFoodsList()) {
             gameField.setCell(food.getX(), food.getY(), FOOD);
         }
-        for (SnakesProto.GameState.Snake snake : gameState.getSnakesList()) { // тут лучше всего везде ставить type SNAKE_BODY, будем смотреть коллизии в engine путем сравнения голов, точнее голову вообще игнорируем 😉
+        for (SnakesProto.GameState.Snake snake : gameState.getSnakesList()) {
             int x = 0;
             int y = 0;
             boolean head = true;

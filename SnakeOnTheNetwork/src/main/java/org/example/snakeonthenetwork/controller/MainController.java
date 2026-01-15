@@ -29,7 +29,7 @@ public class MainController {
     private SnakesProto.GameConfig gameConfig;
     private String gameName;
 
-    private volatile SnakesProto.NodeRole myRole = SnakesProto.NodeRole.NORMAL; //TODO е нужно!
+    private volatile SnakesProto.NodeRole myRole = SnakesProto.NodeRole.NORMAL;
     private volatile int myId;
 
     private int deputyId = -1;
@@ -131,7 +131,6 @@ public class MainController {
 
     private void startTimeoutTask() {
         if (timeoutTask != null) return;
-        // timeoutTask = gameScheduler.scheduleAtFixedRate(this::checkNodes, 1, 3 * gameConfig.getStateDelayMs(), TimeUnit.MILLISECONDS);
         timeoutTask = gameScheduler.scheduleAtFixedRate(this::checkNodes, 1, (long) (0.8 * gameConfig.getStateDelayMs()), TimeUnit.MILLISECONDS); //TODO тут хз какой интервал дожен быть
     }
 
@@ -145,7 +144,7 @@ public class MainController {
         lastJoinMsgSeq = network.sendJoin(announcement, playerName, myRole);
     }
 
-    public void onMessageReceived(SnakesProto.GameMessage msg) { //вызывается из network, не проверяю роли, с надеждой на правильность отправки
+    public void onMessageReceived(SnakesProto.GameMessage msg) {
 
         updateNodeTimestamp(msg.getSenderId());
         if (msg.hasAck()) {
@@ -181,15 +180,6 @@ public class MainController {
 
     private void handleAnnouncement(SnakesProto.GameMessage msg) {
         SnakesProto.GameAnnouncement announcement = msg.getAnnouncement().getGamesList().getFirst();
-//        if (announcement.getPlayers().getPlayersCount() == 1) {
-//            InetSocketAddress addresAndPort = network.getPlayerAddress(msg.getSenderId());
-//            var announcementBuilder = announcement.toBuilder();
-//            announcementBuilder.getPlayersBuilder()
-//                    .getPlayersBuilder(0)
-//                    .setIpAddress(addresAndPort.getAddress().getHostAddress());
-//
-//            announcement = announcementBuilder.build();
-//        }
         app.handleAnnouncement(announcement);
     }
 
@@ -219,10 +209,9 @@ public class MainController {
     }
 
     private void handleState(SnakesProto.GameMessage msg) {
-        // 1. Если Я - Мастер, а мне шлют стейт -> это бунт.
+        // на всякий случай
         if (myRole == SnakesProto.NodeRole.MASTER) {
             logger.warn("I am MASTER, but received STATE from node {}. Sending them to VIEWER.", msg.getSenderId());
-            // Отправляем самозванцу приказ стать Зрителем (или Normal)
             network.sendChangeRole(SnakesProto.NodeRole.MASTER, msg.getSenderId(), SnakesProto.NodeRole.NORMAL);
             return;
         }
@@ -257,7 +246,6 @@ public class MainController {
             } catch (Exception e) {
                 logger.error("Ping error", e);
             }
-            // TODO }, 0, gameConfig.getStateDelayMs() / 10, TimeUnit.MILLISECONDS);
         }, 0, gameConfig.getStateDelayMs() / 5, TimeUnit.MILLISECONDS);
     }
 
@@ -279,9 +267,7 @@ public class MainController {
         network.registerNewPlayer(newPlayerId);
         logger.trace("Sending Ack from handleJoin");
         network.sendAck(msg.getMsgSeq(), newPlayerId);
-//        if (deputyId == -1) {
-//            assignNewDeputy();
-//        }
+
     }
 
 
@@ -296,16 +282,14 @@ public class MainController {
         long timeout = 2 * gameConfig.getStateDelayMs();
         try {
             lastSeenNodes.forEach((id, lastSeen) -> {
-                logger.info("id {}, lastSeen {}", id, now - lastSeen);
+                logger.trace("id {}, lastSeen {}", id, now - lastSeen);
                 if (id == myId || id <= 0) return;
 
                 if (now - lastSeen > timeout) {
-                    logger.info("Node " + id + " timed out. Handling...");
+                    logger.trace("Node " + id + " timed out. Handling...");
                     handleNodeTimeout(id);
                 }
-//                if (lastSeenNodes.isEmpty()) {
-//                    gameOver();
-//                }
+
             });
         } catch (Exception e) {
             logger.error("Exception when checking nodes {}", e);
@@ -320,27 +304,19 @@ public class MainController {
                 // 1. Обновляем локальные данные
                 myRole = SnakesProto.NodeRole.MASTER;
                 masterId = myId;
-
-
                 gameState = engine.updateRole(gameState, myId, SnakesProto.NodeRole.MASTER);
 
                 assignNewDeputy();
 
                 network.broadcastChangeMaster();
-
                 network.broadcastState(gameState);
 
                 startGameLoop();
 
             } else if (myId == masterId) {
-                // assignNewDeputy();
                 removePlayer(playerId);
             } else if (playerId == masterId) {
-                //TODO ????
                 masterId = deputyId;
-//                if (masterId == -1 && myRole == SnakesProto.NodeRole.VIEWER) {
-//                    gameOver();
-//                }
             }
         }
     }
@@ -350,9 +326,8 @@ public class MainController {
             network.sendChangeRole(myRole, playerId, SnakesProto.NodeRole.VIEWER);
             lastSeenNodes.remove(playerId);
             network.removePlayer(playerId);
-            //делаем игрока viewer, пока его зомби-змейка не расшибется
 
-            this.gameState = engine.removePlayer(gameState, playerId); // TODO сделать thread-safe!!!!!
+            this.gameState = engine.removePlayer(gameState, playerId);
 
             if (playerId == deputyId) {
                 deputyId = -1;
@@ -424,7 +399,6 @@ public class MainController {
         logger.info("Stop game");
         lastSeenNodes.clear();
         movesBuffer.clear();
-        //  network.sendChangeRole(SnakesProto.NodeRole.VIEWER, masterId, SnakesProto.NodeRole.MASTER);
         stopAllTasks();
     }
 
@@ -432,7 +406,6 @@ public class MainController {
         if (myRole != SnakesProto.NodeRole.MASTER && movesBuffer.get(myId) != direction) {
             network.sendSteer(direction);
         }
-        //TODo возможно стоит убрать myRole и оставить только myId
         movesBuffer.put(myId, direction);
 
     }
@@ -456,7 +429,7 @@ public class MainController {
     }
 
     public void nowImMaster() {
-        logger.info("IM MASTER!!!!!!!!!!!!!!!!!");
+        logger.debug("IM MASTER!!!!!!!!!!!!!!!!!");
         myRole = SnakesProto.NodeRole.MASTER;
         masterId = myId;
         network.broadcastChangeMaster();

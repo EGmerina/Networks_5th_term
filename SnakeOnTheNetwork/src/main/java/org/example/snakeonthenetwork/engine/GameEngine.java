@@ -20,33 +20,27 @@ public class GameEngine {
         this.controller = mainController;
     }
 
-    // =========================================================================
-    // 1. СОЗДАНИЕ НАЧАЛЬНОГО СОСТОЯНИЯ (ДЛЯ МАСТЕРА)
-    // =========================================================================
     public SnakesProto.GameState createInitialState(String masterName, int unicastPort) {
         int width = config.getWidth();
         int height = config.getHeight();
 
-        // 1. Создаем Мастера (ID = 1)
         SnakesProto.GamePlayer master = SnakesProto.GamePlayer.newBuilder()
                 .setName(masterName)
                 .setId(1)
-                .setIpAddress("") // Заполнится сетевым модулем позже
+                .setIpAddress("") // заполнится при announcement
                 .setPort(unicastPort)
                 .setRole(SnakesProto.NodeRole.MASTER)
                 .setType(SnakesProto.PlayerType.HUMAN)
                 .setScore(0)
                 .build();
 
-        // 2. Создаем Змею Мастера (по центру)
+
         SnakesProto.GameState.Snake masterSnake = createSnake(1, width / 2, height / 2);
 
-        // 3. Генерируем еду
         List<SnakesProto.GameState.Snake> snakes = new ArrayList<>();
         snakes.add(masterSnake);
         List<SnakesProto.GameState.Coord> foods = generateFood(width, height, snakes, new ArrayList<>());
 
-        // 4. Собираем всё в State
         return SnakesProto.GameState.newBuilder()
                 .setStateOrder(0)
                 .setPlayers(SnakesProto.GamePlayers.newBuilder().addPlayers(master))
@@ -55,21 +49,16 @@ public class GameEngine {
                 .build();
     }
 
-    // =========================================================================
-    // 2. ГЛАВНЫЙ ИГРОВОЙ ЦИКЛ (UPDATE)
-    // =========================================================================
     public SnakesProto.GameState update(SnakesProto.GameState currentState, Map<Integer, SnakesProto.Direction> playerMoves) {
         int width = config.getWidth();
         int height = config.getHeight();
 
-        // Копируем списки
         List<SnakesProto.GameState.Snake> oldSnakes = currentState.getSnakesList();
         List<SnakesProto.GamePlayer> players = new ArrayList<>(currentState.getPlayers().getPlayersList());
         List<SnakesProto.GameState.Coord> foods = new ArrayList<>(currentState.getFoodsList());
 
         List<SnakesProto.GameState.Snake> movedSnakes = new ArrayList<>();
 
-        // --- ШАГ 1: Двигаем змей ---
         for (SnakesProto.GameState.Snake snake : oldSnakes) {
             if (snake.getState() == SnakesProto.GameState.Snake.SnakeState.ZOMBIE) {
                 movedSnakes.add(moveSingleSnake(snake, snake.getHeadDirection(), foods, players));
@@ -88,28 +77,22 @@ public class GameEngine {
             movedSnakes.add(moveSingleSnake(snake, nextDir, foods, players));
         }
 
-        // --- ШАГ 2: Проверяем столкновения (Смерть) ---
+
         List<SnakesProto.GameState.Snake> survivingSnakes = new ArrayList<>();
 
         int countAliveSnakes = 0;
 
         for (SnakesProto.GameState.Snake attacker : movedSnakes) {
-//            if (attacker.getState() == SnakesProto.GameState.Snake.SnakeState.ZOMBIE) {
-//                survivingSnakes.add(attacker);
-//                continue;
-//            }
-
             boolean isDead = checkCollision(attacker, movedSnakes);
 
             if (isDead) {
 
-                updatePlayerScoreOrRole(players, attacker.getPlayerId(), 0, true);  //TODO не становтся зрителем
+                updatePlayerScoreOrRole(players, attacker.getPlayerId(), 0, true);
 
-                // 2. Превращение змеи в еду (вероятность 0.5 для каждой клетки)
                 List<SnakesProto.GameState.Coord> deadBody = getAbsoluteCoords(attacker);
                 for (SnakesProto.GameState.Coord coord : deadBody) {
                     if (random.nextDouble() < 0.5) {
-                        // Проверяем, нет ли там уже еды (опционально, но полезно)
+
                         boolean alreadyFood = false;
                         for (SnakesProto.GameState.Coord f : foods) {
                             if (f.getX() == coord.getX() && f.getY() == coord.getY()) {
@@ -131,20 +114,14 @@ public class GameEngine {
             }
 
         }
-        logger.info("alive snakes : {}", countAliveSnakes);
+        logger.trace("alive snakes : {}", countAliveSnakes);
         if (countAliveSnakes == 0) {
             logger.trace("there are not alive snakes!");
             controller.gameOver();
         }
 
-        // --- ШАГ 2.5: РОТАЦИЯ РОЛЕЙ (Master -> Deputy -> Normal) ---
-        // Выполняем после цикла смертей, чтобы состояние игроков было финальным для этого тика
-        //    ensureRoles(players);
-
-        // --- ШАГ 3: Добавляем еду ---
         foods = generateFood(width, height, survivingSnakes, foods);
 
-        // --- ШАГ 4: Собираем новый стейт ---
         return currentState.toBuilder()
                 .setStateOrder(currentState.getStateOrder() + 1)
                 .clearSnakes().addAllSnakes(survivingSnakes)
@@ -153,85 +130,10 @@ public class GameEngine {
                 .build();
     }
 
-    private void ensureRoles(List<SnakesProto.GamePlayer> players) {
-        // 1. Ищем текущего живого Мастера и Заместителя
-        SnakesProto.GamePlayer master = null;
-        SnakesProto.GamePlayer deputy = null;
-
-        // ВАЖНО: Мы ищем именно по роли в списке, который уже обновлен (мертвые стали VIEWER)
-        for (SnakesProto.GamePlayer p : players) {
-            if (p.getRole() == SnakesProto.NodeRole.MASTER) master = p;
-            else if (p.getRole() == SnakesProto.NodeRole.DEPUTY) deputy = p;
-        }
-
-
-        // 2. Если Мастера нет (он умер и стал VIEWER или вышел), назначаем Заместителя
-        if (master == null) {
-
-            if (deputy != null) {
-                // Повышаем Deputy до Master
-                logger.info("deouty to master");
-                changePlayerRole(players, deputy.getId(), SnakesProto.NodeRole.MASTER);
-                //TODO тут логика неправильная, если мы deputy мы вообще сюда не попадаем
-
-                // Теперь deputy стал мастером, значит позиция DEPUTY свободна
-                deputy = null;
-            } else {
-                // Если и Заместителя нет, можно попробовать назначить любого NORMAL (экстренный случай)
-                // Но по спецификации: Master умирает -> Deputy становится Master.
-                // Если Deputy не было, то Master выбирается из живых (обычно тот, у кого id меньше или счет больше)
-                int bestCandidate = findBestCandidate(players);
-                if (bestCandidate != -1) {
-                    changePlayerRole(players, bestCandidate, SnakesProto.NodeRole.MASTER);
-                }
-            }
-        }
-
-        // 3. Если Заместителя нет (он умер, вышел или только что стал Мастером)
-        if (deputy == null) {
-            int bestCandidate = findBestCandidate(players);
-            if (bestCandidate != -1) {
-                changePlayerRole(players, bestCandidate, SnakesProto.NodeRole.DEPUTY);
-            }
-        }
-    }
-
-    // Вспомогательный метод для смены роли конкретного игрока
-    private void changePlayerRole(List<SnakesProto.GamePlayer> players, int playerId, SnakesProto.NodeRole newRole) {
-        for (int i = 0; i < players.size(); i++) {
-            if (players.get(i).getId() == playerId) {
-                players.set(i, players.get(i).toBuilder().setRole(newRole).build());
-                logger.info("ROLE {} !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", newRole);
-                controller.sendChangeRole(playerId, newRole);
-                return;
-            }
-        }
-
-    }
-
-    // Поиск кандидата на повышение (среди NORMAL). Выбираем первого попавшегося или по счету.
-    private int findBestCandidate(List<SnakesProto.GamePlayer> players) {
-        // Можно добавить логику "самый большой счет", но пока берем первого NORMAL
-        for (SnakesProto.GamePlayer p : players) {
-            if (p.getRole() == SnakesProto.NodeRole.NORMAL) {
-                return p.getId();
-            }
-        }
-        return -1; // Кандидатов нет
-    }
-
-
-    // =========================================================================
-    // 3. УПРАВЛЕНИЕ ИГРОКАМИ (ADD / REMOVE)
-    // =========================================================================
-
     public record PlayerIdAndState(SnakesProto.GameState newState, int playerId, String error) {
     }
 
-    // Изменяем сигнатуру метода
     public PlayerIdAndState addPlayer(SnakesProto.GameState currentState, String name, SnakesProto.NodeRole role, InetSocketAddress platerAddress) {
-        int width = config.getWidth();
-        int height = config.getHeight();
 
         SnakesProto.GameState.Coord headCoord = findFreeSquare(currentState, 5);
 
@@ -245,12 +147,6 @@ public class GameEngine {
             if (p.getId() > maxId) maxId = p.getId();
         }
         int newId = maxId + 1;
-
-//        SnakesProto.NodeRole newRole = role;
-//        if (role != SnakesProto.NodeRole.VIEWER && currentState.getPlayers().getPlayersCount() == 1) {
-//            newRole = SnakesProto.NodeRole.DEPUTY;
-//        }
-
 
         SnakesProto.GamePlayer newPlayer = SnakesProto.GamePlayer.newBuilder()
                 .setName(name)
@@ -275,12 +171,10 @@ public class GameEngine {
                     .addSnakes(newSnake)
                     .build();
         }
-        // ВОЗВРАЩАЕМ НОВЫЙ СТЕЙТ
         return new PlayerIdAndState(newState, newId, null);
     }
 
     public SnakesProto.GameState removePlayer(SnakesProto.GameState currentState, int playerId) {
-        // Удаляем из списка игроков
         SnakesProto.GamePlayers.Builder playersBuilder = SnakesProto.GamePlayers.newBuilder();
         for (var p : currentState.getPlayers().getPlayersList()) {
             if (p.getId() != playerId) {
@@ -288,7 +182,6 @@ public class GameEngine {
             }
         }
 
-        // Змею делаем ZOMBIE (чтобы она не исчезла мгновенно, а осталась препятствием)
         List<SnakesProto.GameState.Snake> newSnakes = new ArrayList<>();
         for (SnakesProto.GameState.Snake s : currentState.getSnakesList()) {
             if (s.getPlayerId() == playerId) {
@@ -310,7 +203,6 @@ public class GameEngine {
         SnakesProto.GamePlayers.Builder playersBuilder = currentState.getPlayers().toBuilder();
         boolean found = false;
 
-        // Меняем роль в списке
         for (int i = 0; i < playersBuilder.getPlayersCount(); i++) {
             if (playersBuilder.getPlayers(i).getId() == playerId) {
                 playersBuilder.setPlayers(i, playersBuilder.getPlayers(i).toBuilder().setRole(newRole).build());
@@ -333,35 +225,25 @@ public class GameEngine {
         return tempState;
     }
 
-    // =========================================================================
-    // 4. ВСПОМОГАТЕЛЬНАЯ ЛОГИКА (ДВИЖЕНИЕ И КОЛЛИЗИИ)
-    // =========================================================================
+    private SnakesProto.GameState.Snake moveSingleSnake(SnakesProto.GameState.Snake snake, SnakesProto.Direction dir, List<SnakesProto.GameState.Coord> foods, List<SnakesProto.GamePlayer> players) {
 
-    private SnakesProto.GameState.Snake moveSingleSnake(SnakesProto.GameState.Snake snake,
-                                                        SnakesProto.Direction dir,
-                                                        List<SnakesProto.GameState.Coord> foods,
-                                                        List<SnakesProto.GamePlayer> players) {
-        // Распаковка координат
         List<SnakesProto.GameState.Coord> absCoords = getAbsoluteCoords(snake);
         SnakesProto.GameState.Coord head = absCoords.get(0);
 
-        // Вычисляем новую голову (с учетом тора)
         SnakesProto.GameState.Coord newHead = shift(head, dir);
 
-        // Проверяем еду
         boolean ate = false;
         Iterator<SnakesProto.GameState.Coord> it = foods.iterator();
         while (it.hasNext()) {
             SnakesProto.GameState.Coord f = it.next();
             if (f.getX() == newHead.getX() && f.getY() == newHead.getY()) {
                 ate = true;
-                it.remove(); // Еда съедена
+                it.remove();
                 updatePlayerScoreOrRole(players, snake.getPlayerId(), 1, false); // +1 очко
                 break;
             }
         }
 
-        // Двигаем тело
         List<SnakesProto.GameState.Coord> newAbsCoords = new ArrayList<>();
         newAbsCoords.add(newHead);
         newAbsCoords.addAll(absCoords);
@@ -369,7 +251,6 @@ public class GameEngine {
             newAbsCoords.remove(newAbsCoords.size() - 1); // Убираем хвост, если не поели
         }
 
-        // Упаковка обратно
         return snake.toBuilder()
                 .clearPoints().addAllPoints(convertToOffsets(newAbsCoords))
                 .setHeadDirection(dir)
@@ -388,18 +269,13 @@ public class GameEngine {
             for (int i = startIndex; i < targetBody.size(); i++) {
                 SnakesProto.GameState.Coord b = targetBody.get(i);
                 if (head.getX() == b.getX() && head.getY() == b.getY()) {
-                    return true; // Врезался!
+                    return true;
                 }
             }
         }
         return false;
     }
 
-    // =========================================================================
-    // 5. МАТЕМАТИКА И УТИЛИТЫ (PRIVATE)
-    // =========================================================================
-
-    // Превращаем относительные смещения в абсолютные координаты
     private List<SnakesProto.GameState.Coord> getAbsoluteCoords(SnakesProto.GameState.Snake snake) {
         List<SnakesProto.GameState.Coord> res = new ArrayList<>();
         if (snake.getPointsCount() == 0) return res;
@@ -417,12 +293,11 @@ public class GameEngine {
         return res;
     }
 
-    // Превращаем абсолютные координаты обратно в смещения
     private List<SnakesProto.GameState.Coord> convertToOffsets(List<SnakesProto.GameState.Coord> abs) {
         List<SnakesProto.GameState.Coord> res = new ArrayList<>();
         if (abs.isEmpty()) return res;
 
-        res.add(abs.get(0)); // Первая точка как есть
+        res.add(abs.get(0));
 
         for (int i = 1; i < abs.size(); i++) {
             int prevX = abs.get(i - 1).getX();
@@ -445,7 +320,6 @@ public class GameEngine {
         return res;
     }
 
-    // Сдвиг координаты на 1 клетку
     private SnakesProto.GameState.Coord shift(SnakesProto.GameState.Coord c, SnakesProto.Direction d) {
         int x = c.getX();
         int y = c.getY();
@@ -455,18 +329,17 @@ public class GameEngine {
             case LEFT -> x -= 1;
             case RIGHT -> x += 1;
         }
-        // Заворачиваем координаты (Тор)
+
         x = (x + config.getWidth()) % config.getWidth();
         y = (y + config.getHeight()) % config.getHeight();
         return coord(x, y);
     }
 
-    // Генерация еды
+
     private List<SnakesProto.GameState.Coord> generateFood(int w, int h, List<SnakesProto.GameState.Snake> snakes, List<SnakesProto.GameState.Coord> foods) {
         int needed = config.getFoodStatic() + snakes.size();
 
-        while (foods.size() < needed) { //TODO for
-            // Ищем свободную клетку (не занятую змеями и другой едой)
+        while (foods.size() < needed) {
             SnakesProto.GameState.Coord f = findFreePoint(w, h, snakes, foods);
             foods.add(f);
         }
@@ -513,12 +386,8 @@ public class GameEngine {
 
     private boolean isSquareFree(SnakesProto.GameState state, int cx, int cy, int size) {
         int half = size / 2;
-        int w = config.getWidth();
-        int h = config.getHeight();
-
         for (var s : state.getSnakesList()) {
             for (var p : getAbsoluteCoords(s)) {
-                // Простая проверка без учета тора для квадрата спавна
                 if (Math.abs(p.getX() - cx) <= half && Math.abs(p.getY() - cy) <= half) return false;
             }
         }
@@ -529,7 +398,7 @@ public class GameEngine {
         return SnakesProto.GameState.Snake.newBuilder()
                 .setPlayerId(id)
                 .addPoints(coord(headX, headY))
-                .addPoints(coord(0, 1)) // Хвост вниз
+                .addPoints(coord(0, 1))
                 .setHeadDirection(SnakesProto.Direction.UP)
                 .setState(SnakesProto.GameState.Snake.SnakeState.ALIVE)
                 .build();
@@ -540,9 +409,7 @@ public class GameEngine {
             if (players.get(i).getId() == id) {
                 var b = players.get(i).toBuilder();
                 if (scoreAdd > 0) b.setScore(b.getScore() + scoreAdd);
-//                if (setViewer && players.get(i).getRole() != SnakesProto.NodeRole.MASTER && players.get(i).getRole() != SnakesProto.NodeRole.DEPUTY) {
-//                    b.setRole(SnakesProto.NodeRole.VIEWER);
-//                }
+
                 players.set(i, b.build());
                 return;
             }

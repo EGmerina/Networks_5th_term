@@ -31,7 +31,6 @@ public class NetworkController {
     private AtomicLong lastSendTime = new AtomicLong(0); // в целом
 
     public void registerNewPlayer(int newPlayerId) {
-        // receivedMessages.remove(0); //TODO если удалить то могут прийти дубликаты, что плохо, если не удалять, то новый join может не пройти
         InetSocketAddress address = playersAddresses.remove(0);
         playersAddresses.put(newPlayerId, address);
     }
@@ -62,7 +61,7 @@ public class NetworkController {
     private static class UnconfirmedMessage {
         final SnakesProto.GameMessage message;
         final SocketAddress address;
-        long sendTime; // ВАЖНО: здесь НЕТ слова final
+        long sendTime;
 
         public UnconfirmedMessage(SnakesProto.GameMessage message, SocketAddress address, long sendTime) {
             this.message = message;
@@ -116,7 +115,7 @@ public class NetworkController {
 
         unconfirmedMessages.entrySet().removeIf(entry ->
                 entry.getValue().message.hasSteer()
-        ); //TODO нужно ли ? (удаление старых steer)
+        );
         sendUnicastReliably(msg, playersAddresses.get(controller.getMasterId()));
         lastSendTime.set(System.currentTimeMillis());
     }
@@ -222,7 +221,7 @@ public class NetworkController {
 
         unconfirmedMessages.entrySet().removeIf(entry ->
                 entry.getValue().message.hasState()
-        ); //TODO нужно ли ? (удаление старых state)
+        );
 
         broadcast(msg);
         lastSendTime.set(System.currentTimeMillis());
@@ -234,7 +233,7 @@ public class NetworkController {
                 .setGameName(gameName)
                 .setConfig(gameConfig)
                 .setPlayers(gameState.getPlayers())
-                .setCanJoin(true)           //TODO спрашивать у engine
+                .setCanJoin(true)
                 .build();
 
         SnakesProto.GameMessage msg = SnakesProto.GameMessage.newBuilder()
@@ -300,7 +299,6 @@ public class NetworkController {
         InetSocketAddress senderAddr = new InetSocketAddress(ip, port);
 
         logger.debug("Received message : {} from {}", message.getTypeCase(), message.getSenderId());
-        //TODO && !message.hasJoin()
         if (message.hasJoin() && playersAddresses.containsValue(senderAddr)) {
             for (Map.Entry<Integer, InetSocketAddress> entry : playersAddresses.entrySet()) {
                 if (entry.getKey() > 0 && entry.getValue().equals(senderAddr)) {
@@ -310,7 +308,6 @@ public class NetworkController {
         }
 
         if (message.hasSenderId() && !message.hasJoin() && (isDuplicate(message.getSenderId(), message.getMsgSeq()) || message.getSenderId() == controller.getMyId())) {
-            //TODo все еще может игронироваться что-то
             logger.trace("Ignore message : {} from {}", message.getTypeCase(), message.getSenderId());
             return;
         }
@@ -326,23 +323,18 @@ public class NetworkController {
         if (message.hasSenderId() && !message.hasDiscover() && !message.hasAck() && !message.hasPing()) {
 
             if (message.hasAnnouncement()) {
-                // Сначала проверяем условие, чтобы лишний раз не создавать билдеры
+
                 SnakesProto.GameAnnouncement firstGame = message.getAnnouncement().getGamesList().getFirst();
 
-                // Ваша проверка: меняем только если игрок всего один
                 if (firstGame.getPlayers().getPlayersCount() == 1) {
 
-                    // 1. Создаем билдер для сообщения AnnouncementMsg
                     var announcementMsgBuilder = message.getAnnouncement().toBuilder();
 
-                    // 2. Получаем билдер первой игры -> билдер списка игроков -> билдер 0-го игрока
-                    // И сразу устанавливаем IP и порт
                     announcementMsgBuilder.getGamesBuilder(0)
                             .getPlayersBuilder()
                             .getPlayersBuilder(0)
                             .setIpAddress(ip.getHostAddress());
 
-                    // 3. Пересобираем итоговое сообщение
                     message = message.toBuilder()
                             .setAnnouncement(announcementMsgBuilder)
                             .build();

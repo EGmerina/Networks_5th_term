@@ -16,12 +16,12 @@ public class GameCanvas {
     private static final Random random = new Random();
     private SnakeApp app;
 
-    private Color[] colorsForOtherPlayers = {
+    private final Color[] colorsForOtherPlayers = {
             Color.YELLOW,
             Color.BLUE,
             Color.ORANGE,
-            Color.MAGENTA, // Ярко-фиолетовый
-            Color.CYAN,    // Ярко-голубой
+            Color.MAGENTA,
+            Color.CYAN,
             Color.PURPLE,
             Color.BROWN,
             Color.GOLD
@@ -42,33 +42,32 @@ public class GameCanvas {
 
         GraphicsContext gc = canvas.getGraphicsContext2D();
 
-        // Очистка фона
+
         gc.setFill(Color.BLACK);
         gc.fillRect(0, 0, w, h);
 
-        // 1. Вычисляем размер клетки так, чтобы она была КВАДРАТНОЙ
-        // Берем минимум между доступной шириной и высотой, деленной на кол-во клеток
+
         double cellW = w / width;
         double cellH = h / height;
         double cellSize = Math.min(cellW, cellH);
 
-        // 2. Вычисляем отступы, чтобы поле было по ЦЕНТРУ
+
         double fieldPixelWidth = cellSize * width;
         double fieldPixelHeight = cellSize * height;
         double offsetX = (w - fieldPixelWidth) / 2;
         double offsetY = (h - fieldPixelHeight) / 2;
 
-        // Рисуем границы игрового поля (опционально, чтобы видеть границы)
+
         gc.setStroke(Color.DARKGRAY);
         gc.strokeRect(offsetX, offsetY, fieldPixelWidth, fieldPixelHeight);
 
-        // --- Рисуем еду ---
+
         gc.setFill(Color.RED);
         for (SnakesProto.GameState.Coord food : state.getFoodsList()) {
             drawCell(gc, food.getX(), food.getY(), cellSize, offsetX, offsetY);
         }
 
-        // --- Рисуем змей ---
+
         for (SnakesProto.GameState.Snake snake : state.getSnakesList()) {
             gc.setFill(snake.getPlayerId() == app.getMyId() ? Color.GREEN : colorsForOtherPlayers[snake.getPlayerId() % colorsForOtherPlayers.length]);
             if (snake.getState() == SnakesProto.GameState.Snake.SnakeState.ZOMBIE) {
@@ -93,10 +92,8 @@ public class GameCanvas {
         }
     }
 
-    // Вспомогательный метод для рисования квадратика с учетом смещения
+
     private void drawCell(GraphicsContext gc, int x, int y, double size, double offX, double offY) {
-        // +1 к координатам и -2 к размеру делают маленький отступ между клетками (красивая сетка)
-        // Если хотите сплошные линии, уберите +1 и -2
         gc.fillRect(offX + x * size + 1, offY + y * size + 1, size - 2, size - 2);
     }
 

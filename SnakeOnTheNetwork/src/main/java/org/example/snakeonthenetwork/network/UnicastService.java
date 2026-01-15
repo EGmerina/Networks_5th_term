@@ -8,7 +8,7 @@ import org.apache.logging.log4j.Logger;
 import java.io.IOException;
 import java.net.*;
 import java.util.Arrays;
-import java.util.concurrent.ExecutorService; // Лучше использовать обычный Executor для бесконечного цикла
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
@@ -87,7 +87,7 @@ public class UnicastService {
         try {
             byte[] data = msg.toByteArray();
             if (address == null) {
-                logger.error("ADDRESS IS NULL!!!!!!!!!!!!!!!!");
+                logger.trace("ADDRESS IS NULL!!!!!!!!!!!!!!!!");
                 return;
             }
             logger.trace("Sent message type {} to {}, id {}, seq = {}", msg.getTypeCase(), address, msg.getReceiverId(), msg.getMsgSeq());

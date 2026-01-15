@@ -31,10 +31,7 @@ public class GameController {
 
     @FXML
     private javafx.scene.layout.VBox gameOverOverlay;
-    @FXML
-    private Label finalScoreLabel;
 
-    private boolean isGameOver = false; // Флаг для блокировки клавиатуры
 
     private SnakeApp app;
 
@@ -114,9 +111,7 @@ public class GameController {
 
 
     public void showGameOver() {
-        this.isGameOver = true;
 
-        // Показываем оверлей
         if (gameOverOverlay != null) {
             gameOverOverlay.setVisible(true);
             gameOverOverlay.toFront(); // На всякий случай вытаскиваем наверх

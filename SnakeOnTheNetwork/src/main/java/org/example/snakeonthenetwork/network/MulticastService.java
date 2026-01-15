@@ -22,7 +22,6 @@ public class MulticastService {
 
     private final NetworkController networkController;
 
-    // ЕДИНСТВЕННЫЙ сокет
     private MulticastSocket socket;
 
     private InetSocketAddress groupAddress;
@@ -40,9 +39,6 @@ public class MulticastService {
 
             this.socket.setNetworkInterface(netIf);
 
-         //   this.socket.setOption(StandardSocketOptions.IP_MULTICAST_LOOP, false);
-
-            // 5. Джойнимся к группе
             this.groupAddress = new InetSocketAddress(MULTICAST_GROUP_IP, MULTICAST_PORT);
             this.socket.joinGroup(groupAddress, netIf);
 
@@ -111,7 +107,6 @@ public class MulticastService {
     public void send(SnakesProto.GameMessage msg) {
         try {
             byte[] data = msg.toByteArray();
-            // Отправляем через ТОТ ЖЕ сокет
             DatagramPacket packet = new DatagramPacket(data, data.length, groupAddress);
             socket.send(packet);
 
@@ -127,10 +122,6 @@ public class MulticastService {
             NetworkInterface netIf = interfaces.nextElement();
             if (!netIf.isUp()) continue;
 
-            // Оставляем Loopback, пока тестируете на одном ПК
-//            if (netIf.isLoopback()) {
-//                return netIf;
-//            }
             if(netIf.supportsMulticast()){
                 return netIf;
             }
