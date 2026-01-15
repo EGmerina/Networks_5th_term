@@ -131,8 +131,8 @@ public class MainController {
 
     private void startTimeoutTask() {
         if (timeoutTask != null) return;
-        timeoutTask = gameScheduler.scheduleAtFixedRate(this::checkNodes, 1, 2 * gameConfig.getStateDelayMs(), TimeUnit.MILLISECONDS);
-        //timeoutTask = gameScheduler.scheduleAtFixedRate(this::checkNodes, 1, (long) (0.8 * gameConfig.getStateDelayMs()), TimeUnit.MILLISECONDS); //TODO тут хз какой интервал дожен быть
+        // timeoutTask = gameScheduler.scheduleAtFixedRate(this::checkNodes, 1, 3 * gameConfig.getStateDelayMs(), TimeUnit.MILLISECONDS);
+        timeoutTask = gameScheduler.scheduleAtFixedRate(this::checkNodes, 1, (long) (0.8 * gameConfig.getStateDelayMs()), TimeUnit.MILLISECONDS); //TODO тут хз какой интервал дожен быть
     }
 
     public void joinGame(SnakesProto.GameAnnouncement announcement, String playerName, SnakesProto.NodeRole role) {
@@ -292,11 +292,12 @@ public class MainController {
 
     private void checkNodes() {
         long now = System.currentTimeMillis();
-        long timeout = (long) (gameConfig.getStateDelayMs() * 0.8);
+        //    long timeout = (long) (gameConfig.getStateDelayMs() * 0.8);
+        long timeout = 2 * gameConfig.getStateDelayMs();
         try {
             lastSeenNodes.forEach((id, lastSeen) -> {
                 logger.info("id {}, lastSeen {}", id, now - lastSeen);
-                if (id == myId) return;
+                if (id == myId || id <= 0) return;
 
                 if (now - lastSeen > timeout) {
                     logger.info("Node " + id + " timed out. Handling...");
@@ -313,11 +314,7 @@ public class MainController {
 
     private void handleNodeTimeout(int playerId) {
         synchronized (stateLock) {
-            //removePlayer(playerId);
-            if (playerId == deputyId && myId == masterId) {
-                // assignNewDeputy();
-                removePlayer(playerId);
-            } else if (playerId == masterId && myId == deputyId) {
+            if (playerId == masterId && myId == deputyId) {
                 logger.info("Deputy taking over as Master...");
                 removePlayer(playerId);
                 // 1. Обновляем локальные данные
@@ -335,6 +332,9 @@ public class MainController {
 
                 startGameLoop();
 
+            } else if (myId == masterId) {
+                // assignNewDeputy();
+                removePlayer(playerId);
             } else if (playerId == masterId) {
                 //TODO ????
                 masterId = deputyId;
@@ -419,6 +419,8 @@ public class MainController {
     public void stopGame() {
         myId = -1;
         myRole = null;
+        masterId = -1;
+        deputyId = -1;
         logger.info("Stop game");
         lastSeenNodes.clear();
         movesBuffer.clear();

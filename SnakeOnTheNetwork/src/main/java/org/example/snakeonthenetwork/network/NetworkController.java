@@ -31,7 +31,7 @@ public class NetworkController {
     private AtomicLong lastSendTime = new AtomicLong(0); // в целом
 
     public void registerNewPlayer(int newPlayerId) {
-        receivedMessages.remove(0);
+        // receivedMessages.remove(0); //TODO если удалить то могут прийти дубликаты, что плохо, если не удалять, то новый join может не пройти
         InetSocketAddress address = playersAddresses.remove(0);
         playersAddresses.put(newPlayerId, address);
     }
@@ -42,6 +42,7 @@ public class NetworkController {
                 entry.getValue().message.getReceiverId() == playerId
         );
     }
+
 
     public void stopResendTask() {
         if (resendTask != null) {
@@ -278,7 +279,10 @@ public class NetworkController {
 
     private void broadcast(SnakesProto.GameMessage msg) {
         playersAddresses.forEach((ind, addr) -> {
-            sendUnicastReliably(msg, addr);
+            if (ind > 0) {
+                sendUnicastReliably(msg, addr);
+            }
+
         });
     }
 
@@ -297,15 +301,20 @@ public class NetworkController {
 
         logger.debug("Received message : {} from {}", message.getTypeCase(), message.getSenderId());
         //TODO && !message.hasJoin()
-        if (message.hasSenderId() && (isDuplicate(message.getSenderId(), message.getMsgSeq()) || message.getSenderId() == controller.getMyId())) {
+        if (message.hasJoin() && playersAddresses.containsValue(senderAddr)) {
+            for (Map.Entry<Integer, InetSocketAddress> entry : playersAddresses.entrySet()) {
+                if (entry.getKey() > 0 && entry.getValue().equals(senderAddr)) {
+                    return;
+                }
+            }
+        }
+
+        if (message.hasSenderId() && !message.hasJoin() && (isDuplicate(message.getSenderId(), message.getMsgSeq()) || message.getSenderId() == controller.getMyId())) {
             //TODo все еще может игронироваться что-то
             logger.trace("Ignore message : {} from {}", message.getTypeCase(), message.getSenderId());
             return;
         }
-//
-//        if (message.hasJoin()) {
-//            playersAddresses.put(message.getSenderId(), senderAddr); // senderId=0
-//        }
+
 
         if (message.hasAck()) {
             UnconfirmedMessage removed = unconfirmedMessages.remove(message.getMsgSeq());
@@ -339,7 +348,7 @@ public class NetworkController {
                             .build();
                 }
             } else {
-                 playersAddresses.put(message.getSenderId(), senderAddr);
+                playersAddresses.put(message.getSenderId(), senderAddr);
                 receivedMessages.put(message.getSenderId(), message.getMsgSeq());
             }
 
