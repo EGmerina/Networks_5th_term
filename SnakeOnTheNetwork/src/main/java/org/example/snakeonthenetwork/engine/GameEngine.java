@@ -262,13 +262,19 @@ public class GameEngine {
                 .setPort(platerAddress.getPort())
                 .build();
 
-        SnakesProto.GameState.Snake newSnake = createSnake(newId, headCoord.getX(), headCoord.getY());
+        SnakesProto.GameState newState;
+        if (role == SnakesProto.NodeRole.VIEWER) {
+            newState = currentState.toBuilder()
+                    .setPlayers(currentState.getPlayers().toBuilder().addPlayers(newPlayer))
+                    .build();
+        } else {
+            SnakesProto.GameState.Snake newSnake = createSnake(newId, headCoord.getX(), headCoord.getY());
 
-        SnakesProto.GameState newState = currentState.toBuilder()
-                .setPlayers(currentState.getPlayers().toBuilder().addPlayers(newPlayer))
-                .addSnakes(newSnake)
-                .build();
-
+            newState = currentState.toBuilder()
+                    .setPlayers(currentState.getPlayers().toBuilder().addPlayers(newPlayer))
+                    .addSnakes(newSnake)
+                    .build();
+        }
         // ВОЗВРАЩАЕМ НОВЫЙ СТЕЙТ
         return new PlayerIdAndState(newState, newId, null);
     }

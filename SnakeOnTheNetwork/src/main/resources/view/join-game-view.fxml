@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.ComboBox?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.layout.ColumnConstraints?>
+<?import javafx.scene.layout.GridPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.RowConstraints?>
+<?import javafx.scene.layout.VBox?>
+
+<VBox alignment="CENTER_LEFT" prefHeight="400.0" prefWidth="400.0" spacing="10"
+      xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="org.example.snakeonthenetwork.ui.JoinGameController">
+
+    <padding>
+        <Insets bottom="20" left="20" right="20" top="20" />
+    </padding>
+
+    <Label style="-fx-font-weight: bold; -fx-font-size: 16px;" text="Join Game Options" />
+
+    <GridPane hgap="10" vgap="10">
+        <Label text="Game Name:" GridPane.rowIndex="0" />
+        <TextField fx:id="gameNameField" disable="true" editable="false" GridPane.columnIndex="1" GridPane.rowIndex="0" />
+
+        <Label text="Host Config:" GridPane.rowIndex="1" />
+        <Label fx:id="configDetailsLabel" text="W:40 H:30 Food:1" style="-fx-text-fill: grey;" GridPane.columnIndex="1" GridPane.rowIndex="1" />
+
+        <Label text="Your Name:" GridPane.rowIndex="2" />
+        <TextField fx:id="playerNameField" text="Player 2" GridPane.columnIndex="1" GridPane.rowIndex="2" />
+
+        <Label text="Role:" GridPane.rowIndex="3" />
+        <ComboBox fx:id="roleComboBox" prefWidth="150.0" GridPane.columnIndex="1" GridPane.rowIndex="3" />
+
+        <columnConstraints>
+            <ColumnConstraints />
+            <ColumnConstraints prefWidth="200.0" />
+        </columnConstraints>
+        <rowConstraints>
+            <RowConstraints />
+            <RowConstraints />
+            <RowConstraints />
+            <RowConstraints />
+        </rowConstraints>
+    </GridPane>
+
+    <Label fx:id="errorLabel" textFill="RED" />
+
+    <HBox alignment="CENTER_RIGHT" spacing="10">
+        <Button onAction="#handleCancel" text="Cancel" />
+        <Button defaultButton="true" onAction="#handleJoin" text="Join" />
+    </HBox>
+</VBox>

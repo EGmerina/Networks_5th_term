@@ -84,17 +84,52 @@ public class MenuController {
     @FXML
     protected void handleJoinGame() {
         String selected = gamesList.getSelectionModel().getSelectedItem();
-        if (selected != null) {
-            logger.info("Joining: " + selected);
-            GameAnnouncement announcement = availableGames.get(selected);
-            if (app != null && announcement.getCanJoin()) {
-                app.joinGame(announcement, "player", SnakesProto.NodeRole.NORMAL); //TODO сделать еще один конфиг
-                availableGames.clear();
-            } else {
-                statusLabel.setText("too many players!");
-            }
-        } else {
+
+        if (selected == null) {
             statusLabel.setText("Please select a game first!");
+            return;
+        }
+
+        GameAnnouncement announcement = availableGames.get(selected);
+        if (announcement == null) {
+            statusLabel.setText("Game info not found!");
+            return;
+        }
+
+        // Проверяем, есть ли смысл пытаться входить (хотя Viewer может зайти всегда, если конфиг позволяет)
+        // Но базовая проверка на переполнение для игроков не помешает, если вы ее реализуете
+        if (!announcement.getCanJoin()) {
+            // Можно разрешить входить VIEWER-ом даже если canJoin=false (зависит от логики сервера)
+            // Но пока оставим предупреждение
+            statusLabel.setText("Game marked as not joinable (maybe full?)");
+            // return; // Раскомментируйте, если хотите запретить открывать окно
+        }
+
+        logger.info("Opening join dialog for: " + announcement.getGameName());
+        showJoinDialog(announcement);
+    }
+
+    private void showJoinDialog(GameAnnouncement game) {
+        try {
+            FXMLLoader loader = new FXMLLoader(getClass().getResource("/view/join-game-view.fxml"));
+            Parent root = loader.load();
+
+            Stage dialogStage = new Stage();
+            dialogStage.setTitle("Join Game: " + game.getGameName());
+            dialogStage.initModality(Modality.WINDOW_MODAL);
+            dialogStage.initOwner(app.getPrimaryStage());
+            dialogStage.setScene(new Scene(root, 400, 300));
+            dialogStage.setResizable(false);
+
+            JoinGameController controller = loader.getController();
+            controller.setApp(app, dialogStage);
+            controller.setGameInfo(game); // Передаем данные об игре
+
+            dialogStage.showAndWait();
+
+        } catch (IOException e) {
+            logger.error("Failed to load join dialog", e);
+            e.printStackTrace();
         }
     }
 

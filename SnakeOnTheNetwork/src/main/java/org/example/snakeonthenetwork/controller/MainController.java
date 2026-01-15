@@ -313,13 +313,13 @@ public class MainController {
 
     private void handleNodeTimeout(int playerId) {
         synchronized (stateLock) {
-            removePlayer(playerId);
+            //removePlayer(playerId);
             if (playerId == deputyId && myId == masterId) {
                 // assignNewDeputy();
-
+                removePlayer(playerId);
             } else if (playerId == masterId && myId == deputyId) {
                 logger.info("Deputy taking over as Master...");
-
+                removePlayer(playerId);
                 // 1. Обновляем локальные данные
                 myRole = SnakesProto.NodeRole.MASTER;
                 masterId = myId;
@@ -337,7 +337,10 @@ public class MainController {
 
             } else if (playerId == masterId) {
                 //TODO ????
-                //  masterId = deputyId;
+                masterId = deputyId;
+//                if (masterId == -1 && myRole == SnakesProto.NodeRole.VIEWER) {
+//                    gameOver();
+//                }
             }
         }
     }
@@ -419,7 +422,7 @@ public class MainController {
         logger.info("Stop game");
         lastSeenNodes.clear();
         movesBuffer.clear();
-      //  network.sendChangeRole(SnakesProto.NodeRole.VIEWER, masterId, SnakesProto.NodeRole.MASTER);
+        //  network.sendChangeRole(SnakesProto.NodeRole.VIEWER, masterId, SnakesProto.NodeRole.MASTER);
         stopAllTasks();
     }
 
